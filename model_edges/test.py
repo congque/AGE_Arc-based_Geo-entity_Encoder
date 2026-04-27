@@ -20,7 +20,6 @@ except ImportError:
 
 
 DATASETS = {
-    "shapeclassification": ("data/buildings/ShapeClassification.gpkg", "label"),
     "single_buildings": ("data/single_buildings/ShapeClassification.gpkg", "label"),
     "single_mnist": ("data/single_mnist/mnist_scaled_normalized.gpkg", "label"),
 }

@@ -21,6 +21,16 @@ Tested with:
 - GeoPandas
 - Shapely
 
+## Data note
+
+`data/single_mnist/mnist_scaled_normalized.gpkg` is tracked with Git LFS.
+
+After cloning, make sure the file is pulled correctly:
+
+```bash
+git lfs pull
+```
+
 ## Run
 
 The unified entry is:

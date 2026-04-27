@@ -1,4 +1,5 @@
-from .edge_net import build_edge_model
+from .entitydeepset import EntityDeepSet
+from .entitysettransformer import EntitySetTransformer
 from .load_entities import (
     geom2set,
     geoms2sets,
@@ -6,7 +7,8 @@ from .load_entities import (
 )
 
 __all__ = [
-    "build_edge_model",
+    "EntityDeepSet",
+    "EntitySetTransformer",
     "geom2set",
     "geoms2sets",
     "load_gpkg",
