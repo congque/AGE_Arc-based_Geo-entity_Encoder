@@ -11,29 +11,42 @@ from torch.utils.data import DataLoader
 
 try:
     from .entitydeepset import EntityDeepSet
+    from .entitysettransformer import EntitySetTransformer
     from .load_entities import load_gpkg
 except ImportError:
     from entitydeepset import EntityDeepSet
+    from entitysettransformer import EntitySetTransformer
     from load_entities import load_gpkg
+
+
+DATASETS = {
+    "shapeclassification": ("data/buildings/ShapeClassification.gpkg", "label"),
+    "single_buildings": ("data/single_buildings/ShapeClassification.gpkg", "label"),
+    "single_mnist": ("data/single_mnist/mnist_scaled_normalized.gpkg", "label"),
+}
 
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", default="data/buildings/ShapeClassification.gpkg")
-    parser.add_argument("--label-column", default="label")
+    parser.add_argument("--dataset", choices=sorted(DATASETS), required=True)
+    parser.add_argument("--set-model", choices=["deepset", "settransformer"], required=True)
+    parser.add_argument("--input", default=None)
+    parser.add_argument("--label-column", default=None)
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--hidden-dim", type=int, default=128)
     parser.add_argument("--embedding-dim", type=int, default=128)
-    parser.add_argument("--output-dir", default="model_edges/results/entitydeepset_shapeclassification_ablation")
-    parser.add_argument("--pool", default="sum", choices=["sum", "sum_mean"])
+    parser.add_argument("--pool", choices=["sum", "sum_mean"], default="sum")
+    parser.add_argument("--num-heads", type=int, default=4)
+    parser.add_argument("--num-encoder-blocks", type=int, default=2)
+    parser.add_argument("--num-decoder-blocks", type=int, default=1)
     parser.add_argument("--xy-num-freqs", type=int, default=8)
-    parser.add_argument("--length-fourier", action="store_true")
+    parser.add_argument("--length-fourier", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--length-num-freqs", type=int, default=None)
-    parser.add_argument("--second-harmonic", action="store_true")
-    parser.add_argument("--use-endpoints", action="store_true")
-    parser.add_argument("--ablate-all", action="store_true")
+    parser.add_argument("--second-harmonic", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--use-endpoints", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--output-dir", default=None)
     return parser.parse_args()
 
 
@@ -107,16 +120,42 @@ def run_epoch(model, loader, optimizer, criterion, device):
     }
 
 
-def run_experiment(args, name, config):
+def build_model(args, input_dim, output_dim):
+    if args.set_model == "deepset":
+        return EntityDeepSet(
+            input_dim=input_dim,
+            hidden_dim=args.hidden_dim,
+            embedding_dim=args.embedding_dim,
+            output_dim=output_dim,
+            pool=args.pool,
+        )
+    return EntitySetTransformer(
+        input_dim=input_dim,
+        hidden_dim=args.hidden_dim,
+        embedding_dim=args.embedding_dim,
+        output_dim=output_dim,
+        num_heads=args.num_heads,
+        num_encoder_blocks=args.num_encoder_blocks,
+        num_decoder_blocks=args.num_decoder_blocks,
+    )
+
+
+def main():
+    args = get_args()
+    default_input, default_label = DATASETS[args.dataset]
+    input_path = args.input or default_input
+    label_column = args.label_column or default_label
+    output_dir = args.output_dir or f"model_edges/results/{args.set_model}_{args.dataset}"
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     edge_sets, raw_labels = load_gpkg(
-        args.input,
-        args.label_column,
-        xy_num_freqs=config["xy_num_freqs"],
-        length_fourier=config["length_fourier"],
-        length_num_freqs=config["length_num_freqs"],
-        second_harmonic=config["second_harmonic"],
-        use_endpoints=config["use_endpoints"],
+        input_path,
+        label_column,
+        xy_num_freqs=args.xy_num_freqs,
+        length_fourier=args.length_fourier,
+        length_num_freqs=args.length_num_freqs,
+        second_harmonic=args.second_harmonic,
+        use_endpoints=args.use_endpoints,
     )
     classes, labels = np.unique(raw_labels, return_inverse=True)
     train_data, val_data, test_data = split_data(edge_sets, labels, args.seed)
@@ -125,13 +164,7 @@ def run_experiment(args, name, config):
     val_loader = DataLoader(val_data, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn)
     test_loader = DataLoader(test_data, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn)
 
-    model = EntityDeepSet(
-        input_dim=edge_sets[0].shape[1],
-        hidden_dim=args.hidden_dim,
-        embedding_dim=args.embedding_dim,
-        output_dim=len(classes),
-        pool=config["pool"],
-    ).to(device)
+    model = build_model(args, edge_sets[0].shape[1], len(classes)).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     criterion = nn.CrossEntropyLoss()
 
@@ -139,21 +172,16 @@ def run_experiment(args, name, config):
     best_val = -1.0
     best_epoch = 0
 
-    print()
-    print(f"=== {name} ===")
-    print(json.dumps(config))
-
     for epoch in range(args.epochs):
         train_metrics = run_epoch(model, train_loader, optimizer, criterion, device)
         val_metrics = run_epoch(model, val_loader, None, criterion, device)
         print(
-            f"{name} epoch {epoch:02d} "
+            f"epoch {epoch:02d} "
             f"train_loss={train_metrics['loss']:.4f} "
             f"train_acc={train_metrics['accuracy']:.4f} "
             f"val_acc={val_metrics['accuracy']:.4f} "
             f"val_f1={val_metrics['macro_f1']:.4f}"
         )
-
         if val_metrics["accuracy"] > best_val:
             best_val = val_metrics["accuracy"]
             best_epoch = epoch
@@ -163,7 +191,8 @@ def run_experiment(args, name, config):
     test_metrics = run_epoch(model, test_loader, None, criterion, device)
 
     summary = {
-        "variant": name,
+        "dataset": args.dataset,
+        "set_model": args.set_model,
         "best_epoch": best_epoch,
         "val_accuracy": best_val,
         "test": test_metrics,
@@ -171,61 +200,27 @@ def run_experiment(args, name, config):
         "num_samples": len(labels),
         "max_epochs": args.epochs,
         "input_dim": edge_sets[0].shape[1],
-        "config": config,
+        "config": {
+            "pool": args.pool,
+            "xy_num_freqs": args.xy_num_freqs,
+            "length_fourier": args.length_fourier,
+            "length_num_freqs": args.length_num_freqs,
+            "second_harmonic": args.second_harmonic,
+            "use_endpoints": args.use_endpoints,
+            "num_heads": args.num_heads,
+            "num_encoder_blocks": args.num_encoder_blocks,
+            "num_decoder_blocks": args.num_decoder_blocks,
+        },
     }
 
-    out_dir = Path(args.output_dir) / name
+    out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     with (out_dir / "summary.json").open("w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
 
-    print(f"{name} best_epoch: {best_epoch}")
-    print(f"{name} test: {test_metrics}")
-    return summary
-
-
-def build_variants(args):
-    base = {
-        "pool": args.pool,
-        "xy_num_freqs": args.xy_num_freqs,
-        "length_fourier": args.length_fourier,
-        "length_num_freqs": args.length_num_freqs,
-        "second_harmonic": args.second_harmonic,
-        "use_endpoints": args.use_endpoints,
-    }
-    if not args.ablate_all:
-        return [("single", base)]
-
-    return [
-        ("baseline_xyfreq8", {"pool": "sum", "xy_num_freqs": 8, "length_fourier": False, "length_num_freqs": None, "second_harmonic": False, "use_endpoints": False}),
-        ("pool_sum_mean", {"pool": "sum_mean", "xy_num_freqs": 8, "length_fourier": False, "length_num_freqs": None, "second_harmonic": False, "use_endpoints": False}),
-        ("length_fourier", {"pool": "sum", "xy_num_freqs": 8, "length_fourier": True, "length_num_freqs": 8, "second_harmonic": False, "use_endpoints": False}),
-        ("second_harmonic", {"pool": "sum", "xy_num_freqs": 8, "length_fourier": False, "length_num_freqs": None, "second_harmonic": True, "use_endpoints": False}),
-        ("endpoints", {"pool": "sum", "xy_num_freqs": 8, "length_fourier": False, "length_num_freqs": None, "second_harmonic": False, "use_endpoints": True}),
-        ("xyfreq4", {"pool": "sum", "xy_num_freqs": 4, "length_fourier": False, "length_num_freqs": None, "second_harmonic": False, "use_endpoints": False}),
-        ("xyfreq16", {"pool": "sum", "xy_num_freqs": 16, "length_fourier": False, "length_num_freqs": None, "second_harmonic": False, "use_endpoints": False}),
-        ("all_combined", {"pool": "sum_mean", "xy_num_freqs": 16, "length_fourier": True, "length_num_freqs": 16, "second_harmonic": True, "use_endpoints": True}),
-    ]
-
-
-def main():
-    args = get_args()
-    variants = build_variants(args)
-    results = [run_experiment(args, name, config) for name, config in variants]
-
-    out_dir = Path(args.output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    with (out_dir / "aggregate.json").open("w", encoding="utf-8") as f:
-        json.dump(results, f, indent=2)
-
     print()
-    for result in results:
-        print(
-            f"{result['variant']}: "
-            f"val_acc={result['val_accuracy']:.4f} "
-            f"test_acc={result['test']['accuracy']:.4f} "
-            f"test_f1={result['test']['macro_f1']:.4f}"
-        )
+    print("best_epoch:", best_epoch)
+    print("test:", test_metrics)
 
 
 if __name__ == "__main__":

@@ -31,7 +31,7 @@ def scalar_fourier(x, num_freqs):
     return np.concatenate([x[:, None], np.sin(x_freq), np.cos(x_freq)], axis=1).astype(np.float32, copy=False)
 
 
-def edge_feature_dim(xy_num_freqs=8, length_fourier=False, length_num_freqs=None, second_harmonic=False, use_endpoints=False):
+def edge_feature_dim(xy_num_freqs=8, length_fourier=True, length_num_freqs=None, second_harmonic=True, use_endpoints=False):
     xy_dim = 4 + 6 * xy_num_freqs
     length_dim = 1 + 2 * (length_num_freqs or xy_num_freqs) if length_fourier else 1
     angle_dim = 12 if second_harmonic else 6
@@ -40,7 +40,7 @@ def edge_feature_dim(xy_num_freqs=8, length_fourier=False, length_num_freqs=None
 
 
 # 单个 entity -> 单个 edge set
-def geom2set(geom, xy_num_freqs=8, length_fourier=False, length_num_freqs=None, second_harmonic=False, use_endpoints=False):
+def geom2set(geom, xy_num_freqs=8, length_fourier=True, length_num_freqs=None, second_harmonic=True, use_endpoints=False):
     edges = []
 
     if isinstance(geom, (Polygon, MultiPolygon)):
