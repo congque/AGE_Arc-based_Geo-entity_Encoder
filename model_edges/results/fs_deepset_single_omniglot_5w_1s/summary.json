@@ -1,0 +1,27 @@
+{
+  "dataset": "single_omniglot",
+  "set_model": "deepset",
+  "n_way": 5,
+  "k_shot": 1,
+  "n_query": 15,
+  "best_epoch": 31,
+  "val_accuracy": 0.2932000005245209,
+  "test_accuracy": 0.273355556850632,
+  "test_ci95": 0.006252915190244035,
+  "test_loss": 2.7580785129467644,
+  "device": "mps",
+  "config": {
+    "xy_num_freqs": 9,
+    "xy_num_freqs_mode": "auto",
+    "length_fourier": true,
+    "second_harmonic": true,
+    "use_endpoints": false,
+    "num_heads": 4,
+    "num_encoder_blocks": 2,
+    "num_decoder_blocks": 1,
+    "num_inducing_points": 16,
+    "train_episodes": 200,
+    "val_episodes": 200,
+    "test_episodes": 600
+  }
+}

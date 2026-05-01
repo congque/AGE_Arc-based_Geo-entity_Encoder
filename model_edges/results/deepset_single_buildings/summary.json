@@ -1,0 +1,30 @@
+{
+  "dataset": "single_buildings",
+  "set_model": "deepset",
+  "best_epoch": 75,
+  "val_accuracy": 0.9467376830892144,
+  "test": {
+    "loss": 0.20973284542560577,
+    "accuracy": 0.9321808510638298,
+    "macro_f1": 0.9304814954939846
+  },
+  "num_classes": 10,
+  "num_samples": 5010,
+  "max_epochs": 80,
+  "input_dim": 73,
+  "device": "mps",
+  "low_shot": null,
+  "config": {
+    "pool": "sum",
+    "xy_num_freqs": 7,
+    "xy_num_freqs_mode": "auto",
+    "length_fourier": true,
+    "length_num_freqs": null,
+    "second_harmonic": true,
+    "use_endpoints": false,
+    "num_heads": 4,
+    "num_encoder_blocks": 2,
+    "num_decoder_blocks": 1,
+    "num_inducing_points": 16
+  }
+}

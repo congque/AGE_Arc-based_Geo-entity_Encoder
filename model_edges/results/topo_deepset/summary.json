@@ -1,0 +1,21 @@
+{
+  "set_model": "deepset",
+  "best_epoch": 1,
+  "val_accuracy": 0.06,
+  "test_accuracy": 0.050666666666666665,
+  "test_loss": 3.7521812140146893,
+  "num_classes": 100,
+  "num_pairs": 5000,
+  "device": "mps",
+  "config": {
+    "xy_num_freqs": 7,
+    "xy_num_freqs_mode": "auto",
+    "length_fourier": true,
+    "second_harmonic": true,
+    "use_endpoints": false,
+    "num_heads": 4,
+    "num_encoder_blocks": 2,
+    "num_decoder_blocks": 1,
+    "num_inducing_points": 16
+  }
+}

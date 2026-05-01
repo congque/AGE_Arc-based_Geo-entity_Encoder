@@ -9,19 +9,36 @@ __pycache__/
 
 # Local-only assets and intermediates
 data_raw/
-model_edges/results/
+
+# ArcSet results: track summary.json only; skip checkpoints (.pt) and full logs (.log)
+model_edges/results/**
+!model_edges/results/
+!model_edges/results/*/
+!model_edges/results/*/summary.json
 
 # Big regenerable datasets (regenerate with scripts/prepare_*.py)
 data/single_omniglot/
 data/single_quickdraw/
 
-# Cloned upstream baselines: ignore everything by default,
-# then whitelist our own adapters / drivers / docs.
+# Cloned upstream baselines — ignore by default, then whitelist:
+#  - PATCHES.md (notes)
+#  - run_arcset_dataset.py / run_full.sh (our adapters)
+#  - any summary.json inside _runs/ or results/ (baseline core numbers)
 baselines/**
 !baselines/PATCHES.md
 !baselines/*/
 !baselines/*/run_arcset_dataset.py
 !baselines/*/run_full.sh
+!baselines/*/_runs/
+!baselines/*/_runs/*/
+!baselines/*/_runs/*/*/
+!baselines/*/_runs/*/summary.json
+!baselines/*/_runs/*/*/summary.json
+!baselines/*/results/
+!baselines/*/results/*/
+!baselines/*/results/*/*/
+!baselines/*/results/*/summary.json
+!baselines/*/results/*/*/summary.json
 
 # Author's local PDF
 ArcSet_*.pdf
