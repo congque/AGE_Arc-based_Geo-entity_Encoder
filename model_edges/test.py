@@ -11,27 +11,34 @@ from torch.utils.data import DataLoader
 
 try:
     from .entitydeepset import EntityDeepSet
-    from .entitysettransformer import EntitySetTransformer
+    from .entitysettransformer_sab import EntitySetTransformerSAB
+    from .entitysettransformer_isab import EntitySetTransformerISAB
     from .load_entities import load_gpkg
 except ImportError:
     from entitydeepset import EntityDeepSet
-    from entitysettransformer import EntitySetTransformer
+    from entitysettransformer_sab import EntitySetTransformerSAB
+    from entitysettransformer_isab import EntitySetTransformerISAB
     from load_entities import load_gpkg
 
 
 DATASETS = {
     "single_buildings": ("data/single_buildings/ShapeClassification.gpkg", "label"),
     "single_mnist": ("data/single_mnist/mnist_scaled_normalized.gpkg", "label"),
+    "single_omniglot": ("data/single_omniglot/omniglot.gpkg", "label"),
+    "single_quickdraw": ("data/single_quickdraw/quickdraw.gpkg", "label"),
 }
+
+
+SET_MODELS = ["deepset", "settransformer-sab", "settransformer-isab"]
 
 
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", choices=sorted(DATASETS), required=True)
-    parser.add_argument("--set-model", choices=["deepset", "settransformer"], required=True)
+    parser.add_argument("--set-model", choices=SET_MODELS, required=True)
     parser.add_argument("--input", default=None)
     parser.add_argument("--label-column", default=None)
-    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--epochs", type=int, default=80)
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--hidden-dim", type=int, default=128)
@@ -40,11 +47,17 @@ def get_args():
     parser.add_argument("--num-heads", type=int, default=4)
     parser.add_argument("--num-encoder-blocks", type=int, default=2)
     parser.add_argument("--num-decoder-blocks", type=int, default=1)
-    parser.add_argument("--xy-num-freqs", type=int, default=8)
+    parser.add_argument("--num-inducing-points", type=int, default=16,
+                        help="ISAB only: number of learnable inducing points")
+    parser.add_argument("--xy-num-freqs", default="auto",
+                        help='int or "auto" (default: auto = clip(ceil(log2(avg_arcs))+3, 6, 9))')
     parser.add_argument("--length-fourier", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--length-num-freqs", type=int, default=None)
     parser.add_argument("--second-harmonic", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--use-endpoints", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--low-shot", type=int, default=None,
+                        help="If set, subsample N training examples per class (low-shot regime)")
+    parser.add_argument("--device", default=None, help="cpu | cuda | mps (default: auto)")
     parser.add_argument("--output-dir", default=None)
     return parser.parse_args()
 
@@ -54,7 +67,7 @@ def collate_fn(batch):
     return list(edge_sets), torch.tensor(labels, dtype=torch.long)
 
 
-def split_data(edge_sets, labels, seed):
+def split_data(edge_sets, labels, seed, low_shot=None):
     rng = np.random.default_rng(seed)
     idx = np.arange(len(labels))
     rng.shuffle(idx)
@@ -64,6 +77,17 @@ def split_data(edge_sets, labels, seed):
     train_idx = idx[:n_train]
     val_idx = idx[n_train:n_train + n_val]
     test_idx = idx[n_train + n_val:]
+
+    if low_shot is not None:
+        labels_arr = np.asarray(labels)
+        chosen = []
+        for c in np.unique(labels_arr[train_idx]):
+            cls_pool = train_idx[labels_arr[train_idx] == c]
+            take = min(low_shot, len(cls_pool))
+            chosen.append(cls_pool[:take])
+        train_idx = np.concatenate(chosen)
+        rng.shuffle(train_idx)
+
     return (
         [(edge_sets[i], labels[i]) for i in train_idx],
         [(edge_sets[i], labels[i]) for i in val_idx],
@@ -128,15 +152,46 @@ def build_model(args, input_dim, output_dim):
             output_dim=output_dim,
             pool=args.pool,
         )
-    return EntitySetTransformer(
-        input_dim=input_dim,
-        hidden_dim=args.hidden_dim,
-        embedding_dim=args.embedding_dim,
-        output_dim=output_dim,
-        num_heads=args.num_heads,
-        num_encoder_blocks=args.num_encoder_blocks,
-        num_decoder_blocks=args.num_decoder_blocks,
-    )
+    if args.set_model == "settransformer-sab":
+        return EntitySetTransformerSAB(
+            input_dim=input_dim,
+            hidden_dim=args.hidden_dim,
+            embedding_dim=args.embedding_dim,
+            output_dim=output_dim,
+            num_heads=args.num_heads,
+            num_encoder_blocks=args.num_encoder_blocks,
+            num_decoder_blocks=args.num_decoder_blocks,
+        )
+    if args.set_model == "settransformer-isab":
+        return EntitySetTransformerISAB(
+            input_dim=input_dim,
+            hidden_dim=args.hidden_dim,
+            embedding_dim=args.embedding_dim,
+            output_dim=output_dim,
+            num_heads=args.num_heads,
+            num_encoder_blocks=args.num_encoder_blocks,
+            num_decoder_blocks=args.num_decoder_blocks,
+            num_inducing_points=args.num_inducing_points,
+        )
+    raise ValueError(args.set_model)
+
+
+def pick_device(name):
+    if name:
+        return torch.device(name)
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
+def parse_xy_num_freqs(value):
+    if value is None:
+        return "auto"
+    if isinstance(value, str) and value.lower() == "auto":
+        return "auto"
+    return int(value)
 
 
 def main():
@@ -144,26 +199,31 @@ def main():
     default_input, default_label = DATASETS[args.dataset]
     input_path = args.input or default_input
     label_column = args.label_column or default_label
-    output_dir = args.output_dir or f"model_edges/results/{args.set_model}_{args.dataset}"
+    out_tag = args.set_model.replace("-", "_")
+    output_dir = args.output_dir or f"model_edges/results/{out_tag}_{args.dataset}"
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    edge_sets, raw_labels = load_gpkg(
+    device = pick_device(args.device)
+
+    edge_sets, raw_labels, used_xy_freqs = load_gpkg(
         input_path,
         label_column,
-        xy_num_freqs=args.xy_num_freqs,
+        xy_num_freqs=parse_xy_num_freqs(args.xy_num_freqs),
         length_fourier=args.length_fourier,
         length_num_freqs=args.length_num_freqs,
         second_harmonic=args.second_harmonic,
         use_endpoints=args.use_endpoints,
     )
     classes, labels = np.unique(raw_labels, return_inverse=True)
-    train_data, val_data, test_data = split_data(edge_sets, labels, args.seed)
+    train_data, val_data, test_data = split_data(edge_sets, labels, args.seed, low_shot=args.low_shot)
+    print(f"[split] train={len(train_data)} val={len(val_data)} test={len(test_data)} "
+          f"low_shot={args.low_shot}")
 
     train_loader = DataLoader(train_data, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
     val_loader = DataLoader(val_data, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn)
     test_loader = DataLoader(test_data, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn)
 
     model = build_model(args, edge_sets[0].shape[1], len(classes)).to(device)
+    print(f"[model] {args.set_model} params={sum(p.numel() for p in model.parameters()):,}")
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     criterion = nn.CrossEntropyLoss()
 
@@ -195,13 +255,16 @@ def main():
         "best_epoch": best_epoch,
         "val_accuracy": best_val,
         "test": test_metrics,
-        "num_classes": len(classes),
-        "num_samples": len(labels),
+        "num_classes": int(len(classes)),
+        "num_samples": int(len(labels)),
         "max_epochs": args.epochs,
-        "input_dim": edge_sets[0].shape[1],
+        "input_dim": int(edge_sets[0].shape[1]),
+        "device": str(device),
+        "low_shot": args.low_shot,
         "config": {
             "pool": args.pool,
-            "xy_num_freqs": args.xy_num_freqs,
+            "xy_num_freqs": used_xy_freqs,
+            "xy_num_freqs_mode": args.xy_num_freqs,
             "length_fourier": args.length_fourier,
             "length_num_freqs": args.length_num_freqs,
             "second_harmonic": args.second_harmonic,
@@ -209,6 +272,7 @@ def main():
             "num_heads": args.num_heads,
             "num_encoder_blocks": args.num_encoder_blocks,
             "num_decoder_blocks": args.num_decoder_blocks,
+            "num_inducing_points": args.num_inducing_points,
         },
     }
 
@@ -216,6 +280,7 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     with (out_dir / "summary.json").open("w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
+    torch.save(best_state, out_dir / "best.pt")
 
     print()
     print("best_epoch:", best_epoch)

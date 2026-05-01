@@ -1,8 +1,36 @@
 from __future__ import annotations
 
+import math
+
 import geopandas as gpd
 import numpy as np
 from shapely.geometry import LineString, MultiLineString, MultiPoint, MultiPolygon, Point, Polygon
+
+
+def auto_num_freqs(avg_arcs: float, lo: int = 6, hi: int = 9) -> int:
+    """Pick xy_num_freqs based on average arcs per entity, clamped to [lo, hi].
+
+    Formula: clip(ceil(log2(avg_arcs)) + 3, lo, hi). Examples:
+      avg=4 -> 6, avg=10 -> 7, avg=16 -> 7, avg=32 -> 8, avg=64 -> 9.
+    """
+    if avg_arcs <= 1:
+        return lo
+    n = math.ceil(math.log2(avg_arcs)) + 3
+    return int(min(hi, max(lo, n)))
+
+
+def count_arcs(geom):
+    if isinstance(geom, Polygon):
+        return len(geom.exterior.coords) - 1 + sum(len(r.coords) - 1 for r in geom.interiors)
+    if isinstance(geom, MultiPolygon):
+        return sum(count_arcs(p) for p in geom.geoms)
+    if isinstance(geom, LineString):
+        return max(len(geom.coords) - 1, 1)
+    if isinstance(geom, MultiLineString):
+        return sum(count_arcs(g) for g in geom.geoms)
+    if isinstance(geom, (Point, MultiPoint)):
+        return 1
+    return 1
 
 
 def freq_bands(num_freqs):
@@ -178,8 +206,13 @@ def geoms2sets(geom_list, **kwargs):
     return [geom2set(geom, **kwargs) for geom in geom_list]
 
 
-def load_gpkg(path, label_column="label", **kwargs):
+def load_gpkg(path, label_column="label", xy_num_freqs="auto", **kwargs):
     gdf = gpd.read_file(path)
-    edge_sets = geoms2sets(gdf.geometry.tolist(), **kwargs)
+    geoms = gdf.geometry.tolist()
+    if xy_num_freqs == "auto" or xy_num_freqs is None:
+        avg = float(np.mean([count_arcs(g) for g in geoms]))
+        xy_num_freqs = auto_num_freqs(avg)
+        print(f"[load_gpkg] avg arcs/entity = {avg:.2f} -> xy_num_freqs = {xy_num_freqs}")
+    edge_sets = geoms2sets(geoms, xy_num_freqs=xy_num_freqs, **kwargs)
     labels = gdf[label_column].to_numpy()
-    return edge_sets, labels
+    return edge_sets, labels, int(xy_num_freqs)

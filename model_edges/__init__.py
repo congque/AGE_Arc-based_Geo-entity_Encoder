@@ -1,6 +1,9 @@
 from .entitydeepset import EntityDeepSet
-from .entitysettransformer import EntitySetTransformer
+from .entitysettransformer_sab import EntitySetTransformerSAB
+from .entitysettransformer_isab import EntitySetTransformerISAB
 from .load_entities import (
+    auto_num_freqs,
+    count_arcs,
     geom2set,
     geoms2sets,
     load_gpkg,
@@ -8,7 +11,10 @@ from .load_entities import (
 
 __all__ = [
     "EntityDeepSet",
-    "EntitySetTransformer",
+    "EntitySetTransformerSAB",
+    "EntitySetTransformerISAB",
+    "auto_num_freqs",
+    "count_arcs",
     "geom2set",
     "geoms2sets",
     "load_gpkg",

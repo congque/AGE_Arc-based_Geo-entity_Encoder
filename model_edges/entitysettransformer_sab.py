@@ -45,7 +45,9 @@ class PMA(nn.Module):
         return self.mab(seed, x, mask)
 
 
-class EntitySetTransformer(nn.Module):
+class EntitySetTransformerSAB(nn.Module):
+    """ArcSet-SetTransformer-SAB: full self-attention encoder, O(N^2) per block."""
+
     def __init__(
         self,
         input_dim,
@@ -62,9 +64,9 @@ class EntitySetTransformer(nn.Module):
         self.pma = PMA(hidden_dim, num_heads, num_seeds=1)
         self.decoder = nn.ModuleList([SAB(hidden_dim, num_heads) for _ in range(num_decoder_blocks)])
         self.rho = MLP(hidden_dim, hidden_dim, embedding_dim)
-        self.head = MLP(embedding_dim, embedding_dim, output_dim)
+        self.head = MLP(embedding_dim, embedding_dim, output_dim) if output_dim is not None else None
 
-    def forward(self, edge_sets):
+    def encode(self, edge_sets):
         x = [self.stem(edge_set) for edge_set in edge_sets]
         lengths = torch.tensor([len(edge_set) for edge_set in x], device=x[0].device)
         x = pad_sequence(x, batch_first=True)
@@ -79,4 +81,10 @@ class EntitySetTransformer(nn.Module):
             x = block(x)
 
         x = x[:, 0]
-        return self.head(self.rho(x))
+        return self.rho(x)
+
+    def forward(self, edge_sets):
+        z = self.encode(edge_sets)
+        if self.head is None:
+            return z
+        return self.head(z)

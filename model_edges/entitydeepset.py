@@ -26,9 +26,9 @@ class EntityDeepSet(nn.Module):
         self.phi = MLP(input_dim, hidden_dim // 2, hidden_dim)
         pooled_dim = hidden_dim * 2 if pool == "sum_mean" else hidden_dim
         self.rho = MLP(pooled_dim, hidden_dim, embedding_dim)
-        self.head = MLP(embedding_dim, embedding_dim, output_dim)
+        self.head = MLP(embedding_dim, embedding_dim, output_dim) if output_dim is not None else None
 
-    def forward(self, edge_sets):
+    def encode(self, edge_sets):
         pooled = []
         for edge_set in edge_sets:
             h = self.phi(edge_set)
@@ -36,4 +36,10 @@ class EntityDeepSet(nn.Module):
                 pooled.append(torch.cat([h.sum(dim=0), h.mean(dim=0)], dim=0))
             else:
                 pooled.append(h.sum(dim=0))
-        return self.head(self.rho(torch.stack(pooled, dim=0)))
+        return self.rho(torch.stack(pooled, dim=0))
+
+    def forward(self, edge_sets):
+        z = self.encode(edge_sets)
+        if self.head is None:
+            return z
+        return self.head(z)
