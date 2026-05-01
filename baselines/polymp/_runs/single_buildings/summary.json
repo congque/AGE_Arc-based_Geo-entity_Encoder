@@ -1,0 +1,30 @@
+{
+  "dataset": "single_buildings",
+  "model": "polymp",
+  "epochs": 2,
+  "requested_device": "mps",
+  "actual_device": "mps",
+  "seed": 42,
+  "class_map": {
+    "E": 0,
+    "F": 1,
+    "H": 2,
+    "I": 3,
+    "L": 4,
+    "O": 5,
+    "T": 6,
+    "U": 7,
+    "Y": 8,
+    "Z": 9
+  },
+  "counts": {
+    "train": 3507,
+    "val": 751,
+    "test": 752
+  },
+  "train_pickle": "/Users/alexxu/Documents/research/AGE_Arc-based_Geo-entity_Encoder/baselines/polymp/_runs/single_buildings/train.pkl",
+  "val_pickle": "/Users/alexxu/Documents/research/AGE_Arc-based_Geo-entity_Encoder/baselines/polymp/_runs/single_buildings/val.pkl",
+  "test_pickle": "/Users/alexxu/Documents/research/AGE_Arc-based_Geo-entity_Encoder/baselines/polymp/_runs/single_buildings/test.pkl",
+  "test_accuracy": 0.4521276595744681,
+  "macro_f1": 0.4266471428371834
+}
