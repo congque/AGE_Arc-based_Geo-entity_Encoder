@@ -13,7 +13,7 @@ export PYTORCH_ENABLE_MPS_FALLBACK=1
 EPOCHS=${EPOCHS:-80}
 TRAIN_EP=${TRAIN_EP:-200}
 VAL_EP=${VAL_EP:-200}
-TEST_EP=${TEST_EP:-600}
+TEST_EP=${TEST_EP:-1000}
 
 # Priority order: SAB + ISAB first (capacity proven sufficient), then DeepSet
 for model in settransformer-sab settransformer-isab deepset; do

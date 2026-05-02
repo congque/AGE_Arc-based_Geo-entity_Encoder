@@ -1,18 +1,18 @@
 {
   "dataset": "single_mnist",
   "set_model": "settransformer-sab",
-  "best_epoch": 62,
-  "val_accuracy": 0.9871111111111112,
+  "best_epoch": 57,
+  "val_accuracy": 0.9861111111111112,
   "test": {
-    "loss": 0.050857708053456414,
-    "accuracy": 0.9854444444444445,
-    "macro_f1": 0.9853135516238481
+    "loss": 0.05055518518802193,
+    "accuracy": 0.9867777777777778,
+    "macro_f1": 0.9866225656352471
   },
   "num_classes": 10,
   "num_samples": 60000,
   "max_epochs": 80,
   "input_dim": 89,
-  "device": "mps",
+  "device": "cuda",
   "low_shot": null,
   "config": {
     "pool": "sum",

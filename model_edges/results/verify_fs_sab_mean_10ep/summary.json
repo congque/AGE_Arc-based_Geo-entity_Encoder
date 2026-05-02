@@ -1,15 +1,15 @@
 {
   "dataset": "single_omniglot",
-  "set_model": "deepset",
+  "set_model": "settransformer-sab",
   "n_way": 5,
   "k_shot": 1,
   "n_query": 15,
-  "best_epoch": 71,
-  "val_accuracy": 0.9638666826486587,
-  "test_accuracy": 0.9185866886377334,
-  "test_ci95": 0.0042132869858157295,
-  "test_loss": 0.2467453611504752,
-  "device": "cuda",
+  "best_epoch": 9,
+  "val_accuracy": 0.848533331155777,
+  "test_accuracy": 0.7688000005483627,
+  "test_ci95": 0.02260259833460663,
+  "test_loss": 0.6577854349464178,
+  "device": "mps",
   "config": {
     "xy_num_freqs": 6,
     "xy_num_freqs_mode": "6",
@@ -21,12 +21,12 @@
     "num_encoder_blocks": 2,
     "num_decoder_blocks": 1,
     "num_inducing_points": 16,
-    "train_episodes": 200,
-    "val_episodes": 200,
-    "test_episodes": 1000,
+    "train_episodes": 50,
+    "val_episodes": 50,
+    "test_episodes": 100,
     "proto_distance": "cosine",
     "proto_init_temp": 10.0,
     "proto_learnable_temp": true,
-    "proto_final_temp": 30.047361373901367
+    "proto_final_temp": 10.923007011413574
   }
 }

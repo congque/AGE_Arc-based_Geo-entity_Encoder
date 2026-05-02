@@ -84,6 +84,13 @@ def _iter_polygon_rings(geom):
         for poly in geom.geoms:
             yield poly
         return
+    # GeometryCollection (often produced by make_valid on degenerate inputs):
+    # walk recursively and emit any embedded polygon parts.
+    if hasattr(geom, "geoms"):
+        for child in geom.geoms:
+            if isinstance(child, (Polygon, MultiPolygon)):
+                yield from _iter_polygon_rings(child)
+        return
     raise TypeError(f"Unsupported geometry type: {geom.geom_type}")
 
 

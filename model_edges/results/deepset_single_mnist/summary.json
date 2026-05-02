@@ -1,18 +1,18 @@
 {
   "dataset": "single_mnist",
   "set_model": "deepset",
-  "best_epoch": 55,
-  "val_accuracy": 0.981,
+  "best_epoch": 45,
+  "val_accuracy": 0.9792222222222222,
   "test": {
-    "loss": 0.06473049446278148,
-    "accuracy": 0.9806666666666667,
-    "macro_f1": 0.9805976662321413
+    "loss": 0.06664892443848981,
+    "accuracy": 0.9803333333333333,
+    "macro_f1": 0.9802295987065632
   },
   "num_classes": 10,
   "num_samples": 60000,
   "max_epochs": 80,
   "input_dim": 89,
-  "device": "mps",
+  "device": "cuda",
   "low_shot": null,
   "config": {
     "pool": "sum",

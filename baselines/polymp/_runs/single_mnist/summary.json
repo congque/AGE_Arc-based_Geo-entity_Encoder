@@ -1,0 +1,30 @@
+{
+  "dataset": "single_mnist",
+  "model": "polymp",
+  "epochs": 80,
+  "requested_device": "cuda",
+  "actual_device": "cuda",
+  "seed": 42,
+  "class_map": {
+    "0": 0,
+    "1": 1,
+    "2": 2,
+    "3": 3,
+    "4": 4,
+    "5": 5,
+    "6": 6,
+    "7": 7,
+    "8": 8,
+    "9": 9
+  },
+  "counts": {
+    "train": 42000,
+    "val": 9000,
+    "test": 9000
+  },
+  "train_pickle": "/scratch/sx2490/arcset/baselines/polymp/_runs/single_mnist/train.pkl",
+  "val_pickle": "/scratch/sx2490/arcset/baselines/polymp/_runs/single_mnist/val.pkl",
+  "test_pickle": "/scratch/sx2490/arcset/baselines/polymp/_runs/single_mnist/test.pkl",
+  "test_accuracy": 0.973,
+  "macro_f1": 0.972781623225696
+}

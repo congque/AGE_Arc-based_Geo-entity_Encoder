@@ -1,9 +1,9 @@
 {
   "dataset": "single_buildings",
-  "model": "polymp",
-  "epochs": 2,
-  "requested_device": "mps",
-  "actual_device": "mps",
+  "model": "dsc_polymp",
+  "epochs": 80,
+  "requested_device": "cuda",
+  "actual_device": "cuda",
   "seed": 42,
   "class_map": {
     "E": 0,
@@ -22,9 +22,9 @@
     "val": 751,
     "test": 752
   },
-  "train_pickle": "/Users/alexxu/Documents/research/AGE_Arc-based_Geo-entity_Encoder/baselines/polymp/_runs/single_buildings/train.pkl",
-  "val_pickle": "/Users/alexxu/Documents/research/AGE_Arc-based_Geo-entity_Encoder/baselines/polymp/_runs/single_buildings/val.pkl",
-  "test_pickle": "/Users/alexxu/Documents/research/AGE_Arc-based_Geo-entity_Encoder/baselines/polymp/_runs/single_buildings/test.pkl",
-  "test_accuracy": 0.4521276595744681,
-  "macro_f1": 0.4266471428371834
+  "train_pickle": "/scratch/sx2490/arcset/baselines/polymp/_runs/single_buildings/train.pkl",
+  "val_pickle": "/scratch/sx2490/arcset/baselines/polymp/_runs/single_buildings/val.pkl",
+  "test_pickle": "/scratch/sx2490/arcset/baselines/polymp/_runs/single_buildings/test.pkl",
+  "test_accuracy": 0.8789893617021277,
+  "macro_f1": 0.8759377298642208
 }

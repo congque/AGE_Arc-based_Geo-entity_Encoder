@@ -81,14 +81,22 @@ class EntitySetTransformerISAB(nn.Module):
         num_encoder_blocks=2,
         num_decoder_blocks=1,
         num_inducing_points=16,
+        set_pooling="pma",
     ):
         super().__init__()
+        if set_pooling not in {"pma", "mean"}:
+            raise ValueError(f"Unsupported set_pooling={set_pooling!r}")
+        self.set_pooling = set_pooling
         self.stem = MLP(input_dim, hidden_dim, hidden_dim)
         self.encoder = nn.ModuleList(
             [ISAB(hidden_dim, num_heads, num_inducing_points) for _ in range(num_encoder_blocks)]
         )
-        self.pma = PMA(hidden_dim, num_heads, num_seeds=1)
-        self.decoder = nn.ModuleList([_SeedSAB(hidden_dim, num_heads) for _ in range(num_decoder_blocks)])
+        if self.set_pooling == "pma":
+            self.pma = PMA(hidden_dim, num_heads, num_seeds=1)
+            self.decoder = nn.ModuleList([_SeedSAB(hidden_dim, num_heads) for _ in range(num_decoder_blocks)])
+        else:
+            self.pma = None
+            self.decoder = nn.ModuleList()
         self.rho = MLP(hidden_dim, hidden_dim, embedding_dim)
         self.head = MLP(embedding_dim, embedding_dim, output_dim) if output_dim is not None else None
 
@@ -100,6 +108,11 @@ class EntitySetTransformerISAB(nn.Module):
 
         for block in self.encoder:
             x = block(x, mask)
+
+        if self.set_pooling == "mean":
+            valid = (~mask).unsqueeze(-1).to(dtype=x.dtype)
+            x = (x * valid).sum(dim=1) / lengths.to(dtype=x.dtype).unsqueeze(1)
+            return self.rho(x)
 
         x = self.pma(x, mask)
 

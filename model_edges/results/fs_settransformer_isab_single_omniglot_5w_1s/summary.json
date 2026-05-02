@@ -1,14 +1,14 @@
 {
   "dataset": "single_omniglot",
-  "set_model": "deepset",
+  "set_model": "settransformer-isab",
   "n_way": 5,
   "k_shot": 1,
   "n_query": 15,
-  "best_epoch": 71,
-  "val_accuracy": 0.9638666826486587,
-  "test_accuracy": 0.9185866886377334,
-  "test_ci95": 0.0042132869858157295,
-  "test_loss": 0.2467453611504752,
+  "best_epoch": 1,
+  "val_accuracy": 0.5542000137269497,
+  "test_accuracy": 0.5204000107198954,
+  "test_ci95": 0.0072225981635247625,
+  "test_loss": 1.6094309579133987,
   "device": "cuda",
   "config": {
     "xy_num_freqs": 6,
@@ -27,6 +27,6 @@
     "proto_distance": "cosine",
     "proto_init_temp": 10.0,
     "proto_learnable_temp": true,
-    "proto_final_temp": 30.047361373901367
+    "proto_final_temp": 9.970091819763184
   }
 }

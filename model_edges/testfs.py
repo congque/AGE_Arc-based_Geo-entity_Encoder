@@ -67,6 +67,14 @@ def get_args():
     p.add_argument("--num-decoder-blocks", type=int, default=1)
     p.add_argument("--num-inducing-points", type=int, default=16)
     p.add_argument("--pool", choices=["sum", "sum_mean"], default="sum")
+    p.add_argument("--sab-pooling", choices=["mean", "pma"], default="mean",
+                   help="set aggregation for SAB encoder; mean avoids PMA collapse on long arc sets")
+    p.add_argument("--proto-distance", choices=["cosine", "sqeuclidean"], default="cosine",
+                   help="distance metric for ProtoNet logits (default: cosine, bypasses LayerNorm norm-fix)")
+    p.add_argument("--proto-init-temp", type=float, default=10.0,
+                   help="initial temperature multiplier on logits (default 10)")
+    p.add_argument("--proto-learnable-temp", action=argparse.BooleanOptionalAction, default=True,
+                   help="make logit temperature a learnable parameter")
     p.add_argument("--xy-num-freqs", default="auto")
     p.add_argument("--length-fourier", action=argparse.BooleanOptionalAction, default=True)
     p.add_argument("--length-num-freqs", type=int, default=None)
@@ -153,9 +161,50 @@ def sample_episode(index_table, classes_pool, n_way, k_shot, n_query, rng):
     )
 
 
-def proto_logits(z_support, z_query, n_way, k_shot):
-    z_support = z_support.view(n_way, k_shot, -1).mean(dim=1)
-    diff = z_query.unsqueeze(1) - z_support.unsqueeze(0)
+class ProtoHead(nn.Module):
+    """ProtoNet decoder with optional learnable logit temperature.
+
+    Two distance flavours:
+      - cosine: logits = scale * cos(z_q, mean(z_sup_c))
+      - sqeuclidean: logits = -scale * ||z_q - mean(z_sup_c)||^2
+
+    LayerNorm in the SAB encoder fixes embedding norm to ~sqrt(D) and makes
+    pairwise sq distances ~2D for unrelated pairs, so the differences between
+    classes are dwarfed by the overall scale; softmax becomes flat and loss
+    plateaus at chance even when argmax is mostly right. Cosine distance with
+    a learnable scale is the standard fix and is the default here.
+    """
+
+    def __init__(self, distance: str = "cosine", init_temp: float = 10.0,
+                 learnable: bool = True):
+        super().__init__()
+        self.distance = distance
+        log_temp = torch.tensor(math.log(max(init_temp, 1e-6)), dtype=torch.float32)
+        if learnable:
+            self.log_temp = nn.Parameter(log_temp)
+        else:
+            self.register_buffer("log_temp", log_temp)
+
+    def forward(self, z_support: torch.Tensor, z_query: torch.Tensor,
+                n_way: int, k_shot: int) -> torch.Tensor:
+        prototypes = z_support.view(n_way, k_shot, -1).mean(dim=1)
+        scale = self.log_temp.exp()
+        if self.distance == "cosine":
+            zq = F.normalize(z_query, dim=-1)
+            zs = F.normalize(prototypes, dim=-1)
+            return scale * (zq @ zs.t())
+        diff = z_query.unsqueeze(1) - prototypes.unsqueeze(0)
+        dist_sq = (diff ** 2).sum(dim=-1)
+        return -scale * dist_sq
+
+
+def proto_logits(z_support, z_query, n_way, k_shot, head: "ProtoHead | None" = None):
+    if head is not None:
+        return head(z_support, z_query, n_way, k_shot)
+    # Backwards-compatible path used by older callers; equivalent to ProtoHead
+    # with distance=sqeuclidean, scale=1.
+    prototypes = z_support.view(n_way, k_shot, -1).mean(dim=1)
+    diff = z_query.unsqueeze(1) - prototypes.unsqueeze(0)
     return -(diff ** 2).sum(dim=-1)
 
 
@@ -172,20 +221,25 @@ def build_encoder(args, input_dim):
         return EntitySetTransformerSAB(num_heads=args.num_heads,
                                        num_encoder_blocks=args.num_encoder_blocks,
                                        num_decoder_blocks=args.num_decoder_blocks,
+                                       set_pooling=args.sab_pooling,
                                        **common)
     if args.set_model == "settransformer-isab":
         return EntitySetTransformerISAB(num_heads=args.num_heads,
                                         num_encoder_blocks=args.num_encoder_blocks,
                                         num_decoder_blocks=args.num_decoder_blocks,
                                         num_inducing_points=args.num_inducing_points,
+                                        set_pooling=args.sab_pooling,
                                         **common)
     raise ValueError(args.set_model)
 
 
 def run_episodes(model, edge_sets, index_table, classes_pool, n_way, k_shot, n_query,
-                 n_episodes, optimizer, device, rng, max_skips=None):
+                 n_episodes, optimizer, device, rng, max_skips=None,
+                 proto_head: "ProtoHead | None" = None):
     train = optimizer is not None
     model.train(train)
+    if proto_head is not None:
+        proto_head.train(train)
     losses, accs = [], []
     skipped = 0
     if max_skips is None:
@@ -202,7 +256,7 @@ def run_episodes(model, edge_sets, index_table, classes_pool, n_way, k_shot, n_q
         qry_batch = to_tensor_batch(edge_sets, qry_idx, device)
         z_sup = model.encode(sup_batch)
         z_qry = model.encode(qry_batch)
-        logits = proto_logits(z_sup, z_qry, n_way, k_shot)
+        logits = proto_logits(z_sup, z_qry, n_way, k_shot, head=proto_head)
         target = torch.from_numpy(qry_labels).to(device)
         loss = F.cross_entropy(logits, target)
         if train:
@@ -248,34 +302,48 @@ def main():
     index_table = build_index(labels, all_classes)
 
     encoder = build_encoder(args, edge_sets[0].shape[1]).to(device)
+    proto_head = ProtoHead(distance=args.proto_distance,
+                           init_temp=args.proto_init_temp,
+                           learnable=args.proto_learnable_temp).to(device)
     print(f"[model] {args.set_model} params={sum(p.numel() for p in encoder.parameters()):,}")
-    optimizer = torch.optim.Adam(encoder.parameters(), lr=args.lr)
+    print(f"[proto] distance={args.proto_distance} init_temp={args.proto_init_temp} "
+          f"learnable={args.proto_learnable_temp}")
+    params = list(encoder.parameters()) + list(proto_head.parameters())
+    optimizer = torch.optim.Adam(params, lr=args.lr)
 
     best_state = None
     best_val = -1.0
     best_epoch = 0
 
+    best_proto_state = None
     for epoch in range(args.epochs):
         tr_loss, tr_acc, _ = run_episodes(encoder, edge_sets, index_table, train_classes,
                                           args.n_way, args.k_shot, args.n_query,
-                                          args.train_episodes, optimizer, device, rng)
+                                          args.train_episodes, optimizer, device, rng,
+                                          proto_head=proto_head)
         with torch.no_grad():
             va_loss, va_acc, va_ci = run_episodes(encoder, edge_sets, index_table, val_classes,
                                                   args.n_way, args.k_shot, args.n_query,
-                                                  args.val_episodes, None, device, rng)
+                                                  args.val_episodes, None, device, rng,
+                                                  proto_head=proto_head)
+        cur_temp = float(proto_head.log_temp.exp().item())
         print(f"epoch {epoch:02d} train_loss={tr_loss:.4f} train_acc={tr_acc:.4f} "
-              f"val_acc={va_acc:.4f} ±{va_ci:.4f}")
+              f"val_acc={va_acc:.4f} ±{va_ci:.4f} temp={cur_temp:.3f}")
         if va_acc > best_val:
             best_val = va_acc
             best_epoch = epoch
             best_state = {k: v.detach().cpu().clone() for k, v in encoder.state_dict().items()}
+            best_proto_state = {k: v.detach().cpu().clone() for k, v in proto_head.state_dict().items()}
 
     if best_state is not None:
         encoder.load_state_dict(best_state)
+        if best_proto_state is not None:
+            proto_head.load_state_dict(best_proto_state)
     with torch.no_grad():
         te_loss, te_acc, te_ci = run_episodes(encoder, edge_sets, index_table, test_classes,
                                               args.n_way, args.k_shot, args.n_query,
-                                              args.test_episodes, None, device, rng)
+                                              args.test_episodes, None, device, rng,
+                                              proto_head=proto_head)
 
     summary = {
         "dataset": args.dataset,
@@ -295,6 +363,7 @@ def main():
             "length_fourier": args.length_fourier,
             "second_harmonic": args.second_harmonic,
             "use_endpoints": args.use_endpoints,
+            "sab_pooling": args.sab_pooling,
             "num_heads": args.num_heads,
             "num_encoder_blocks": args.num_encoder_blocks,
             "num_decoder_blocks": args.num_decoder_blocks,
@@ -302,6 +371,10 @@ def main():
             "train_episodes": args.train_episodes,
             "val_episodes": args.val_episodes,
             "test_episodes": args.test_episodes,
+            "proto_distance": args.proto_distance,
+            "proto_init_temp": args.proto_init_temp,
+            "proto_learnable_temp": args.proto_learnable_temp,
+            "proto_final_temp": float(proto_head.log_temp.exp().item()),
         },
     }
     out = Path(output_dir)

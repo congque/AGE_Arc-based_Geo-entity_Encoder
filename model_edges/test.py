@@ -49,6 +49,8 @@ def get_args():
     parser.add_argument("--num-decoder-blocks", type=int, default=1)
     parser.add_argument("--num-inducing-points", type=int, default=16,
                         help="ISAB only: number of learnable inducing points")
+    parser.add_argument("--sab-pooling", choices=["mean", "pma"], default="mean",
+                        help="SAB/ISAB set aggregation; mean avoids PMA collapse on long arc sets")
     parser.add_argument("--xy-num-freqs", default="auto",
                         help='int or "auto" (default: auto = clip(ceil(log2(avg_arcs))+3, 6, 9))')
     parser.add_argument("--length-fourier", action=argparse.BooleanOptionalAction, default=True)
@@ -161,6 +163,7 @@ def build_model(args, input_dim, output_dim):
             num_heads=args.num_heads,
             num_encoder_blocks=args.num_encoder_blocks,
             num_decoder_blocks=args.num_decoder_blocks,
+            set_pooling=args.sab_pooling,
         )
     if args.set_model == "settransformer-isab":
         return EntitySetTransformerISAB(
@@ -168,6 +171,7 @@ def build_model(args, input_dim, output_dim):
             hidden_dim=args.hidden_dim,
             embedding_dim=args.embedding_dim,
             output_dim=output_dim,
+            set_pooling=args.sab_pooling,
             num_heads=args.num_heads,
             num_encoder_blocks=args.num_encoder_blocks,
             num_decoder_blocks=args.num_decoder_blocks,

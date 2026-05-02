@@ -2,17 +2,17 @@
   "dataset": "single_buildings",
   "set_model": "settransformer-isab",
   "best_epoch": 69,
-  "val_accuracy": 0.96271637816245,
+  "val_accuracy": 0.9693741677762983,
   "test": {
-    "loss": 0.09827820100682846,
-    "accuracy": 0.9667553191489362,
-    "macro_f1": 0.9657778633636862
+    "loss": 0.11375064386966381,
+    "accuracy": 0.9601063829787234,
+    "macro_f1": 0.9595703526111473
   },
   "num_classes": 10,
   "num_samples": 5010,
   "max_epochs": 80,
   "input_dim": 73,
-  "device": "mps",
+  "device": "cuda",
   "low_shot": null,
   "config": {
     "pool": "sum",

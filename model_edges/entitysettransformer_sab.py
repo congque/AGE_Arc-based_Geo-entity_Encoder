@@ -46,7 +46,12 @@ class PMA(nn.Module):
 
 
 class EntitySetTransformerSAB(nn.Module):
-    """ArcSet-SetTransformer-SAB: full self-attention encoder, O(N^2) per block."""
+    """ArcSet-SetTransformer-SAB: full self-attention encoder, O(N^2) per block.
+
+    `set_pooling="mean"` bypasses PMA and aggregates encoder tokens with a
+    masked mean. This is more stable for long arc sequences in few-shot
+    settings where a single PMA seed can become nearly input-independent.
+    """
 
     def __init__(
         self,
@@ -57,12 +62,20 @@ class EntitySetTransformerSAB(nn.Module):
         num_heads=4,
         num_encoder_blocks=2,
         num_decoder_blocks=1,
+        set_pooling="pma",
     ):
         super().__init__()
+        if set_pooling not in {"pma", "mean"}:
+            raise ValueError(f"Unsupported set_pooling={set_pooling!r}")
+        self.set_pooling = set_pooling
         self.stem = MLP(input_dim, hidden_dim, hidden_dim)
         self.encoder = nn.ModuleList([SAB(hidden_dim, num_heads) for _ in range(num_encoder_blocks)])
-        self.pma = PMA(hidden_dim, num_heads, num_seeds=1)
-        self.decoder = nn.ModuleList([SAB(hidden_dim, num_heads) for _ in range(num_decoder_blocks)])
+        if self.set_pooling == "pma":
+            self.pma = PMA(hidden_dim, num_heads, num_seeds=1)
+            self.decoder = nn.ModuleList([SAB(hidden_dim, num_heads) for _ in range(num_decoder_blocks)])
+        else:
+            self.pma = None
+            self.decoder = nn.ModuleList()
         self.rho = MLP(hidden_dim, hidden_dim, embedding_dim)
         self.head = MLP(embedding_dim, embedding_dim, output_dim) if output_dim is not None else None
 
@@ -74,6 +87,11 @@ class EntitySetTransformerSAB(nn.Module):
 
         for block in self.encoder:
             x = block(x, mask)
+
+        if self.set_pooling == "mean":
+            valid = (~mask).unsqueeze(-1).to(dtype=x.dtype)
+            x = (x * valid).sum(dim=1) / lengths.to(dtype=x.dtype).unsqueeze(1)
+            return self.rho(x)
 
         x = self.pma(x, mask)
 

@@ -1,18 +1,18 @@
 {
   "dataset": "single_mnist",
   "set_model": "settransformer-isab",
-  "best_epoch": 55,
-  "val_accuracy": 0.9822222222222222,
+  "best_epoch": 0,
+  "val_accuracy": 0.11177777777777778,
   "test": {
-    "loss": 0.0566156475742658,
-    "accuracy": 0.9824444444444445,
-    "macro_f1": 0.9823012611361943
+    "loss": 2.30120675807529,
+    "accuracy": 0.11577777777777777,
+    "macro_f1": 0.020752838080063733
   },
   "num_classes": 10,
   "num_samples": 60000,
   "max_epochs": 80,
   "input_dim": 89,
-  "device": "mps",
+  "device": "cuda",
   "low_shot": null,
   "config": {
     "pool": "sum",

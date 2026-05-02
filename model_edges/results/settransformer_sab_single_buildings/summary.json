@@ -1,18 +1,18 @@
 {
   "dataset": "single_buildings",
   "set_model": "settransformer-sab",
-  "best_epoch": 65,
-  "val_accuracy": 0.9893475366178429,
+  "best_epoch": 37,
+  "val_accuracy": 0.9786950732356857,
   "test": {
-    "loss": 0.04031403711501588,
-    "accuracy": 0.9827127659574468,
-    "macro_f1": 0.982491714755602
+    "loss": 0.07764136125432684,
+    "accuracy": 0.9773936170212766,
+    "macro_f1": 0.9768883118124408
   },
   "num_classes": 10,
   "num_samples": 5010,
   "max_epochs": 80,
   "input_dim": 73,
-  "device": "mps",
+  "device": "cuda",
   "low_shot": null,
   "config": {
     "pool": "sum",
