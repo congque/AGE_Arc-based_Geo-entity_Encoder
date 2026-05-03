@@ -22,6 +22,7 @@ TRAIN_EP=${TRAIN_EP:-200}
 VAL_EP=${VAL_EP:-200}
 TEST_EP=${TEST_EP:-1000}
 XYFREQ=${XYFREQ:-6}
+DECODER=${DECODER:-proto}
 EXTRA=${EXTRA:-}
 
 cd /scratch/sx2490/arcset
@@ -29,7 +30,11 @@ source env/conda/etc/profile.d/conda.sh
 conda activate arcset
 
 TAG=${MODEL//-/_}
-OUT=model_edges/results/fs_${TAG}_${DATASET}_${NWAY}w_${KSHOT}s
+OUT_SUFFIX=
+if [[ "$DECODER" == "lr" ]]; then
+  OUT_SUFFIX=_lrhead
+fi
+OUT=model_edges/results/fs_${TAG}_${DATASET}_${NWAY}w_${KSHOT}s${OUT_SUFFIX}
 mkdir -p "$OUT"
 
 python -u model_edges/testfs.py \
@@ -38,5 +43,6 @@ python -u model_edges/testfs.py \
     --val-episodes "$VAL_EP" --test-episodes "$TEST_EP" \
     --n-way "$NWAY" --k-shot "$KSHOT" --n-query "$NQUERY" \
     --xy-num-freqs "$XYFREQ" \
+    --decoder "$DECODER" \
     --proto-distance cosine --proto-init-temp 10.0 \
     --device cuda --output-dir "$OUT" $EXTRA
