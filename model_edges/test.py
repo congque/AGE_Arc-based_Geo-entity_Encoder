@@ -11,10 +11,12 @@ from torch.utils.data import DataLoader
 
 try:
     from .entitydeepset import EntityDeepSet
+    from .entitypointnet import EntityPointNet, EntityPointNet2
     from .entitysettransformer import EntitySetTransformer
     from .load_entities import load_gpkg
 except ImportError:
     from entitydeepset import EntityDeepSet
+    from entitypointnet import EntityPointNet, EntityPointNet2
     from entitysettransformer import EntitySetTransformer
     from load_entities import load_gpkg
 
@@ -28,7 +30,7 @@ DATASETS = {
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", choices=sorted(DATASETS), required=True)
-    parser.add_argument("--set-model", choices=["deepset", "settransformer"], required=True)
+    parser.add_argument("--set-model", choices=["deepset", "pointnet", "pointnet2", "settransformer"], required=True)
     parser.add_argument("--input", default=None)
     parser.add_argument("--label-column", default=None)
     parser.add_argument("--epochs", type=int, default=100)
@@ -37,6 +39,9 @@ def get_args():
     parser.add_argument("--hidden-dim", type=int, default=128)
     parser.add_argument("--embedding-dim", type=int, default=128)
     parser.add_argument("--pool", choices=["sum", "sum_mean"], default="sum")
+    parser.add_argument("--pointnet-pool", choices=["max", "mean", "max_mean"], default="max")
+    parser.add_argument("--pointnet-k", type=int, default=16)
+    parser.add_argument("--dropout", type=float, default=0.0)
     parser.add_argument("--num-heads", type=int, default=4)
     parser.add_argument("--num-encoder-blocks", type=int, default=2)
     parser.add_argument("--num-decoder-blocks", type=int, default=1)
@@ -128,6 +133,25 @@ def build_model(args, input_dim, output_dim):
             output_dim=output_dim,
             pool=args.pool,
         )
+    if args.set_model == "pointnet":
+        return EntityPointNet(
+            input_dim=input_dim,
+            hidden_dim=args.hidden_dim,
+            embedding_dim=args.embedding_dim,
+            output_dim=output_dim,
+            pool=args.pointnet_pool,
+            dropout=args.dropout,
+        )
+    if args.set_model == "pointnet2":
+        return EntityPointNet2(
+            input_dim=input_dim,
+            hidden_dim=args.hidden_dim,
+            embedding_dim=args.embedding_dim,
+            output_dim=output_dim,
+            pool=args.pointnet_pool,
+            k=args.pointnet_k,
+            dropout=args.dropout,
+        )
     return EntitySetTransformer(
         input_dim=input_dim,
         hidden_dim=args.hidden_dim,
@@ -201,6 +225,9 @@ def main():
         "input_dim": edge_sets[0].shape[1],
         "config": {
             "pool": args.pool,
+            "pointnet_pool": args.pointnet_pool,
+            "pointnet_k": args.pointnet_k,
+            "dropout": args.dropout,
             "xy_num_freqs": args.xy_num_freqs,
             "length_fourier": args.length_fourier,
             "length_num_freqs": args.length_num_freqs,
