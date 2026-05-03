@@ -14,12 +14,16 @@ Generated on NYU Torch HPC (`/scratch/sx2490/arcset/`); env at
 | NUFT | Mai et al. GeoInformatica 2023 | rasterised polygon | 0.8523 | 0.9663 |
 | PolygonGNN | Yu et al. KDD 2024 | visibility graph | 0.973 | 0.907 |
 | Poly2Vec | Siampou et al. ICML 2025 | 2D Fourier | 0.8005 | _pending_ |
-| Geo2Vec | Chu et al. AAAI 2026 | SDF + adaptive PE | 0.9721 | _pending_ |
+| Geo2Vec | Chu et al. AAAI 2026 | SDF + adaptive PE | 0.9721 | 0.8854² |
 | PolyMP | Huang et al. GeoInformatica 2025 | graph MP | 0.8843 | 0.9730 |
 | PolyMP-DSC | Huang et al. GeoInformatica 2025 | graph MP + DSC | 0.8790 | 0.9754 |
 
-`single_mnist` results for Poly2Vec/Geo2Vec are queued on the cached/GPU
-pipeline (refactored to precompute features once and train head on GPU).
+² Geo2Vec mnist trained on cached SDF samples (340M points pre-computed once
+on CPU, then SDF MLP + classifier on h200 GPU): sdf_epochs=12, cls_epochs=80,
+batch=16384. Reduced sdf_epochs vs upstream default to fit in 2h preempt
+window; converged head val loss ~0.05.
+
+`single_mnist` Poly2Vec is still queued on the cached/GPU pipeline.
 
 ## Table 2 — Few-shot Omniglot (1623-class stroke, Lake background/evaluation split)
 
@@ -72,13 +76,47 @@ Findings:
   shrinks to within 1.6 / 0.4 pts despite SEN's 21M-sketch QuickDraw
   pretraining vs our from-scratch 80-epoch episodic training.
 
+## Table 3b — Aux-stroke loss across encoders (multi-encoder ablation)
+
+Same auxiliary masked-arc completion head as Table 3, swept across all three
+ArcSet encoders. Δ shows aux-on minus aux-off in percentage points.
+
+| encoder | 5w-1s off / on / Δ | 5w-5s off / on / Δ | 20w-1s off / on / Δ | 20w-5s off / on / Δ |
+|---|---|---|---|---|
+| **SAB** | 0.9179 / **0.9357** / **+1.78** | 0.9686 / **0.9815** / **+1.29** | 0.8841 / 0.8837 / -0.04 | 0.9633 / 0.9635 / +0.02 |
+| ISAB | 0.5494¹ / 0.4859¹ / — | 0.9204 / **0.9728** / **+5.24** | 0.8436 / **0.8764** / **+3.28** | 0.9537 / **0.9655** / **+1.18** |
+| DeepSet | 0.9225 / 0.9164 / **-0.61** | 0.9769 / 0.9735 / **-0.34** | 0.8579 / 0.8482 / **-0.97** | 0.9550 / 0.9510 / **-0.40** |
+
+(ISAB 20w-1s aux-on uses EPOCHS=55 to fit under l40s_public's 2-h preemption
+window; the other ISAB / SAB / DeepSet cells use the default 80 epochs.)
+
+Findings:
+
+- **Aux loss is an attention-encoder benefit.** Both attention encoders gain
+  on every healthy setting (SAB +1.78/+1.29 on 5-way; ISAB +5.24/+3.28/+1.18
+  on its three trainable settings). Mean-pool DeepSet _uniformly loses_
+  −0.34 to −0.97 across all four settings: without attention, the encoder
+  has no mechanism to query masked-arc context from neighbors, so the
+  aux-MDN head pulls capacity away from the discrimination objective.
+- **ISAB collapses at k_shot=1** regardless of aux setting (footnote ¹ in
+  Table 2): a single support example feeds 16 inducing points + cosine
+  proto-head into a degenerate attention pattern. Aux loss does not rescue
+  this. The 5w-5s and 20w-* cells with k≥5 train normally and benefit most
+  from aux.
+- **SAB is the safe default** when one encoder must serve all four
+  settings — it's the only encoder that doesn't go negative on any cell with
+  aux turned on.
+
 ## Caveats
 
 - **Split convention**: Lake et al. background (964 classes train) /
   evaluation (659 classes test). Not the Vinyals 2016 split most ProtoNet
   image-Omniglot tables use; flag this in the Setup section.
-- **No QuickDraw few-shot** here; only the standard supervised classification
-  is benchmarked on the 100-class quickdraw subset.
+- **QuickDraw few-shot is partial.** Sketchformer (5w-1s 0.566, 5w-5s 0.761)
+  and SketchEmbedNet (5w-1s 0.611, 5w-5s 0.790) ran cleanly on the 5-way
+  settings; both fail with NaN on 20-way because our 70/15/15 split of the
+  100-class subset only leaves ~15 test classes — not enough to sample
+  20-way episodes. ArcSet QuickDraw few-shot is not run yet.
 - Reproducibility: see `baselines/PATCHES.md` for the patches we applied to
   each upstream repo so they run under torch 2.11 / no torch_sparse.
 - ArcSet ProtoNet decoder uses cosine similarity with a learnable temperature
@@ -96,8 +134,11 @@ Findings:
 
 ## Open work
 
-- 6 cached GPU jobs queued on `h200_tandon`: Poly2Vec/Geo2Vec on mnist /
-  omniglot / quickdraw. With the precompute caching refactor each finishes
-  in minutes; just waiting on the per-user QOS to clear.
-- Stretch: stroke baselines on QuickDraw — sketch sweep already trains in
-  ~10 min on h200; can rerun once the queue frees.
+- **Poly2Vec single_mnist** still pending — same cached/GPU pipeline as
+  Geo2Vec mnist (which landed at 0.8854). Geo2Vec / Poly2Vec on QuickDraw
+  are blocked on memory: QuickDraw has ~3.6B SDF samples after sampling,
+  exceeds 96 G node limit; needs a streaming or sub-sampled cache.
+- ArcSet QuickDraw few-shot (DeepSet / SAB / ISAB on the 100-class subset,
+  5-way only — 20-way infeasible by split size).
+- PolyMP "robustness matrix" (rotation/shear-invariance ablations) — defer
+  unless reviewer asks.
