@@ -1,31 +1,14 @@
-"""Adapter: train Poly2Vec on the ArcSet shape-classification benchmarks.
+"""Adapter: train Poly2Vec on ArcSet using cached Fourier features.
 
-Loads one of our 4 .gpkg datasets (single_buildings / single_mnist / single_omniglot /
-single_quickdraw), normalises the geometry to [-1, 1] inside the unit square, pads
-to a fixed length, and trains the upstream Poly2Vec geometry encoder followed by
-a small classification head.
-
-Usage:
-    python run_arcset_dataset.py --dataset single_buildings --epochs 2
-
-Notes
------
-* The polygon path triangulates each polygon via the ``triangle`` C library, which
-  needs a CPU tensor (and is not vectorised).  We therefore force the entire
-  Fourier encoder to run on CPU (Poly2Vec's official code uses CUDA for the linear
-  parts but the triangulation hop alone forces a sync, so MPS gives no measurable
-  win).  The classifier head and optimiser stay on the requested ``--device``.
-* Multilinestrings (omniglot, quickdraw) are flattened to a single padded
-  polyline by separating components with the previous endpoint repeated; the FT
-  is summed over each component (linearity of FT) inside Poly2Vec's
-  ``polyline_encoder``.  Architecture supports them.
+The CPU-bound triangulation / Fourier preprocessing is performed once and saved
+to disk. Subsequent runs train only the original Poly2Vec MLP stack plus the
+classification head on the requested accelerator.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -35,11 +18,11 @@ import geopandas as gpd
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from shapely.geometry import LineString, MultiLineString, MultiPolygon, Polygon
-from torch.utils.data import DataLoader, Dataset
+from shapely.geometry import MultiLineString, MultiPolygon
+from torch.utils.data import DataLoader, Subset, TensorDataset
+from tqdm import tqdm
 
-# Make poly2vec models importable when running this file directly
+# Make poly2vec models importable when running this file directly.
 HERE = Path(__file__).resolve().parent
 PROJECT_ROOT = HERE.parent.parent
 sys.path.insert(0, str(HERE))
@@ -48,223 +31,86 @@ from models.poly2vec import Poly2Vec  # noqa: E402
 
 DATASETS = {
     "single_buildings": {
-        "path": "data/single_buildings/ShapeClassification.gpkg",
+        "path": PROJECT_ROOT / "data" / "single_buildings" / "ShapeClassification.gpkg",
         "kind": "polygons",
-        "num_classes": 10,
     },
     "single_mnist": {
-        "path": "data/single_mnist/mnist_scaled_normalized.gpkg",
+        "path": PROJECT_ROOT / "data" / "single_mnist" / "mnist_scaled_normalized.gpkg",
         "kind": "polygons",
-        "num_classes": 10,
     },
     "single_omniglot": {
-        "path": "data/single_omniglot/omniglot.gpkg",
+        "path": PROJECT_ROOT / "data" / "single_omniglot" / "omniglot.gpkg",
         "kind": "polylines",
-        "num_classes": 1623,
     },
     "single_quickdraw": {
-        "path": "data/single_quickdraw/quickdraw.gpkg",
+        "path": PROJECT_ROOT / "data" / "single_quickdraw" / "quickdraw.gpkg",
         "kind": "polylines",
-        "num_classes": 100,
     },
 }
 
+LABEL_CANDIDATES = ("label", "labels", "class", "category", "class_id", "y", "target")
 
-# ---------------------------------------------------------------------------
-# Geometry preprocessing
-# ---------------------------------------------------------------------------
 
-def _polygon_coords(geom):
-    """Return the exterior coords of the largest polygon ring.
+def _detect_label_column(gdf: gpd.GeoDataFrame, preferred: str | None) -> str:
+    if preferred and preferred in gdf.columns:
+        return preferred
+    for col in LABEL_CANDIDATES:
+        if col in gdf.columns:
+            return col
+    for col in gdf.columns:
+        if col != gdf.geometry.name:
+            return col
+    raise RuntimeError("No label column found in GeoDataFrame")
 
-    Poly2Vec's polygon FT does CDT triangulation of one simple ring, so we
-    fall back on the largest exterior in case of MultiPolygon.
-    """
+
+def _polygon_coords(geom) -> np.ndarray:
     if isinstance(geom, MultiPolygon):
-        geom = max(geom.geoms, key=lambda p: p.area)
-    coords = np.asarray(geom.exterior.coords, dtype=np.float64)[:-1]  # drop closing vertex
-    return coords
+        geom = max(geom.geoms, key=lambda poly: poly.area)
+    return np.asarray(geom.exterior.coords, dtype=np.float64)[:-1]
 
 
-def _polyline_coords(geom):
-    """Return the (concatenated) coordinates of a (multi)linestring."""
+def _polyline_coords(geom) -> list[np.ndarray]:
     if isinstance(geom, MultiLineString):
-        # Concatenate components.  Poly2Vec's polyline_encoder iterates over
-        # consecutive 2-point segments; if we just concatenate, we'd inject a
-        # spurious connector segment between strokes.  Instead, we duplicate
-        # the endpoint of one stroke as the start of the next, then mark these
-        # connector segments by zeroing their length post-hoc.  Simpler: just
-        # return list of components; the caller handles padding component-wise
-        # by computing FT per-stroke and summing.
-        return [np.asarray(g.coords, dtype=np.float64) for g in geom.geoms]
+        return [np.asarray(part.coords, dtype=np.float64) for part in geom.geoms]
     return [np.asarray(geom.coords, dtype=np.float64)]
 
 
 def _bbox_norm(coords_iter):
-    """Normalise a list of (N,2) arrays into [-1, 1] using shared bbox."""
     flat = np.concatenate(coords_iter, axis=0) if isinstance(coords_iter, list) else coords_iter
     mn = flat.min(axis=0)
     mx = flat.max(axis=0)
     span = np.where(mx - mn > 1e-9, mx - mn, 1.0)
     if isinstance(coords_iter, list):
-        return [2 * (c - mn) / span - 1 for c in coords_iter]
-    return 2 * (coords_iter - mn) / span - 1
+        return [2.0 * (coords - mn) / span - 1.0 for coords in coords_iter]
+    return 2.0 * (coords_iter - mn) / span - 1.0
 
 
-class PolygonDataset(Dataset):
-    """Pad polygon exteriors to a max length M; return (coords, length, label)."""
-
-    def __init__(self, geoms, labels, max_len):
-        self.coords = np.zeros((len(geoms), max_len, 2), dtype=np.float32)
-        self.lengths = np.zeros(len(geoms), dtype=np.int64)
-        self.labels = np.asarray(labels, dtype=np.int64)
-        for i, g in enumerate(geoms):
-            c = _polygon_coords(g)
-            c = _bbox_norm(c)
-            n = min(len(c), max_len)
-            self.coords[i, :n] = c[:n]
-            self.lengths[i] = n
-
-    def __len__(self):
-        return len(self.labels)
-
-    def __getitem__(self, i):
-        return self.coords[i], self.lengths[i], self.labels[i]
+def detect_geometry_kind(geoms, fallback: str) -> str:
+    geom_types = {geom.geom_type for geom in geoms}
+    if geom_types <= {"Polygon", "MultiPolygon"}:
+        return "polygons"
+    if geom_types <= {"LineString", "MultiLineString"}:
+        return "polylines"
+    return fallback
 
 
-class PolylineDataset(Dataset):
-    """Multilinestring stored as a list of components per item.
-
-    Poly2Vec's ``polyline_encoder`` accepts a single padded polyline per item.
-    Strokes (multilinestring) are summed: we pre-compute per-component FT in
-    the model wrapper.  Here we keep the components as a python list so the
-    collate function pads each component independently.
-    """
-
-    def __init__(self, geoms, labels, max_len):
-        self.components = []
-        self.labels = np.asarray(labels, dtype=np.int64)
-        self.max_len = int(max_len)
-        for g in geoms:
-            comps = _polyline_coords(g)
-            comps = _bbox_norm(comps)
-            self.components.append(comps)
-
-    def __len__(self):
-        return len(self.labels)
-
-    def __getitem__(self, i):
-        return self.components[i], self.labels[i]
+def resolve_device(name: str | None) -> str:
+    requested = name or "cuda"
+    if requested == "cuda" and torch.cuda.is_available():
+        return "cuda"
+    if requested == "mps" and getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+        return "mps"
+    if requested in {"cuda", "mps"}:
+        print(f"[device] {requested} requested but unavailable; falling back to cpu", flush=True)
+    return "cpu"
 
 
-def polygon_collate(batch):
-    coords = torch.from_numpy(np.stack([b[0] for b in batch]))
-    lengths = torch.from_numpy(np.stack([b[1] for b in batch]))
-    labels = torch.from_numpy(np.stack([b[2] for b in batch]))
-    return coords, lengths, labels
+def synchronize_device(device: str) -> None:
+    if device == "cuda" and torch.cuda.is_available():
+        torch.cuda.synchronize()
 
 
-def polyline_collate(batch, max_len):
-    """Flatten each multilinestring into a list-of-tensors so the encoder
-    can be called once per component and the FT contributions summed.
-    """
-    items = []
-    labels = []
-    for comps, y in batch:
-        comp_list = []
-        len_list = []
-        for c in comps:
-            arr = np.zeros((max_len, 2), dtype=np.float32)
-            n = min(len(c), max_len)
-            arr[:n] = c[:n].astype(np.float32, copy=False)
-            comp_list.append(arr)
-            len_list.append(n)
-        items.append((np.stack(comp_list), np.asarray(len_list, dtype=np.int64)))
-        labels.append(y)
-    labels = torch.from_numpy(np.asarray(labels, dtype=np.int64))
-    return items, labels
-
-
-# ---------------------------------------------------------------------------
-# Model wrapper: Poly2Vec encoder + classification head
-# ---------------------------------------------------------------------------
-
-class ShapeClassifier(nn.Module):
-    def __init__(self, args, num_classes):
-        super().__init__()
-        # Poly2Vec encoder lives on its own device (forced cpu for triangle()).
-        self.encoder = Poly2Vec(args=args, device=args.encoder_device)
-        # The encoder doesn't get .to(...) called recursively because the
-        # inner GeometryFourierEncoder is a plain class.  Move sub-modules.
-        self.encoder.nn.to(args.encoder_device)
-        self.encoder.param_mag.to(args.encoder_device)
-        self.encoder.param_phase.to(args.encoder_device)
-        self.head = nn.Sequential(
-            nn.Linear(args.d_out, args.d_out),
-            nn.ReLU(),
-            nn.Dropout(args.dropout),
-            nn.Linear(args.d_out, num_classes),
-        )
-        self.encoder_device = args.encoder_device
-        self.head_device = args.head_device
-        self.head.to(self.head_device)
-
-    def encode_polygon_batch(self, coords, lengths):
-        coords = coords.to(self.encoder_device)
-        lengths = lengths.to(self.encoder_device)
-        emb = self.encoder(coords, lengths, dataset_type="polygons")
-        return emb
-
-    def encode_polyline_batch(self, items):
-        # items: list of (np.ndarray (K,M,2), np.ndarray (K,))
-        embs = []
-        # Lazy access to the U/V meshgrid for empty-stroke fallback
-        ft_zero_shape = self.encoder.ft_encoder.U.shape
-        for comp_arr, len_arr in items:
-            valid = len_arr >= 2
-            if not valid.any():
-                # Degenerate item: produce a zero FT.
-                ft_sum = torch.zeros(
-                    ft_zero_shape, dtype=torch.complex64, device=self.encoder_device
-                )
-            else:
-                comps = torch.from_numpy(comp_arr[valid]).to(self.encoder_device)
-                lens = torch.from_numpy(len_arr[valid]).to(self.encoder_device)
-                # The official polyline_encoder consumes a batch and returns
-                # one FT per polyline; we sum FT contributions over components.
-                ft = self.encoder.ft_encoder.encode(comps, lens, dataset_type="polylines")
-                if ft.dim() == 3:  # already (K, H, W)
-                    ft_sum = ft.sum(dim=0)
-                else:                # squeezed singleton (H, W)
-                    ft_sum = ft
-            ft_sum = ft_sum.unsqueeze(0)  # add batch dim
-            B = ft_sum.shape[0]
-            mag = torch.abs(ft_sum).reshape(B, -1)
-            phase = torch.angle(ft_sum).reshape(B, -1)
-            mag = self.encoder.param_mag(mag)
-            phase = self.encoder.param_phase(phase)
-            emb = self.encoder.nn(torch.cat([mag, phase], dim=1))
-            embs.append(emb)
-        return torch.cat(embs, dim=0)
-
-    def forward(self, batch, kind):
-        if kind == "polygons":
-            coords, lengths, _ = batch
-            emb = self.encode_polygon_batch(coords, lengths)
-        elif kind == "polylines":
-            items, _ = batch
-            emb = self.encode_polyline_batch(items)
-        else:
-            raise ValueError(kind)
-        emb = emb.to(self.head_device)
-        return self.head(emb)
-
-
-# ---------------------------------------------------------------------------
-# Training loop
-# ---------------------------------------------------------------------------
-
-def split_indices(n, seed):
+def split_indices(n: int, seed: int):
     rng = np.random.default_rng(seed)
     idx = np.arange(n)
     rng.shuffle(idx)
@@ -273,58 +119,202 @@ def split_indices(n, seed):
     return idx[:n_train], idx[n_train:n_train + n_val], idx[n_train + n_val:]
 
 
-def make_loaders(name, args):
-    spec = DATASETS[name]
-    path = (PROJECT_ROOT / spec["path"]).resolve()
-    print(f"[load] {path} ...", flush=True)
-    gdf = gpd.read_file(path)
-    if args.limit:
-        gdf = gdf.iloc[: args.limit].reset_index(drop=True)
-    geoms = gdf.geometry.tolist()
-    classes, labels = np.unique(gdf[args.label_column].to_numpy(), return_inverse=True)
-    print(f"[load] N={len(geoms)} classes={len(classes)} kind={spec['kind']}", flush=True)
-
-    if spec["kind"] == "polygons":
-        max_len = int(np.percentile([len(_polygon_coords(g)) for g in geoms], 99))
-        max_len = max(max_len, 8)
-        ds = PolygonDataset(geoms, labels, max_len=max_len)
-        collate = polygon_collate
-    else:
-        # take the 99th percentile per component
-        all_lens = []
-        for g in geoms:
-            for c in _polyline_coords(g):
-                all_lens.append(len(c))
-        max_len = int(np.percentile(all_lens, 99))
-        max_len = max(max_len, 4)
-        ds = PolylineDataset(geoms, labels, max_len=max_len)
-        collate = lambda b: polyline_collate(b, max_len)
-
-    train_idx, val_idx, test_idx = split_indices(len(ds), args.seed)
-    train_ds = torch.utils.data.Subset(ds, train_idx)
-    val_ds = torch.utils.data.Subset(ds, val_idx)
-    test_ds = torch.utils.data.Subset(ds, test_idx)
-
-    return (
-        DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, collate_fn=collate),
-        DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, collate_fn=collate),
-        DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, collate_fn=collate),
-        spec["kind"],
-        len(classes),
-        max_len,
+def build_args(cli, train_device: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        gfm_params={"w_min": 0.1, "w_max": 1.0, "n_freqs": cli.n_freqs},
+        d_input=(2 * cli.n_freqs + 1) * cli.n_freqs,
+        d_hid=cli.d_hid,
+        d_out=cli.d_out,
+        dropout=cli.dropout,
+        fusion="concat",
+        encoder_device="cpu",
+        head_device=train_device,
     )
 
 
-def run_epoch(model, loader, optimizer, criterion, kind):
+def default_feature_cache_path(cli) -> Path:
+    limit_suffix = f"_limit{cli.limit}" if cli.limit else ""
+    kind = DATASETS[cli.dataset]["kind"]
+    return HERE / "cache" / cli.dataset / (
+        f"cache_{cli.dataset}_{kind}_nfreqs{cli.n_freqs}{limit_suffix}.pt"
+    )
+
+
+def load_dataset(cli):
+    spec = DATASETS[cli.dataset]
+    print(f"[load] reading {spec['path']}", flush=True)
+    gdf = gpd.read_file(spec["path"])
+    label_column = _detect_label_column(gdf, cli.label_column)
+    if cli.limit:
+        gdf = gdf.iloc[: cli.limit].reset_index(drop=True)
+    geoms = gdf.geometry.tolist()
+    labels_raw = gdf[label_column].astype(str).to_numpy()
+    classes, labels = np.unique(labels_raw, return_inverse=True)
+    kind = detect_geometry_kind(geoms, spec["kind"])
+    print(
+        f"[load] N={len(geoms)} classes={len(classes)} kind={kind} label_column={label_column}",
+        flush=True,
+    )
+    return geoms, torch.from_numpy(labels.astype(np.int64)), [str(cls) for cls in classes.tolist()], kind, label_column
+
+
+def encode_polygon_feature(ft_encoder, geom, expected_dim: int) -> torch.Tensor:
+    coords = _bbox_norm(_polygon_coords(geom)).astype(np.float32, copy=False)
+    coords_t = torch.from_numpy(coords).unsqueeze(0)
+    lengths_t = torch.tensor([coords.shape[0]], dtype=torch.long)
+    ft = ft_encoder.encode(coords_t, lengths_t, dataset_type="polygons").reshape(-1)
+    feature = torch.cat([torch.abs(ft), torch.angle(ft)], dim=0).to(torch.float32)
+    if feature.numel() != expected_dim:
+        raise RuntimeError(f"Polygon feature dim mismatch: got {feature.numel()}, expected {expected_dim}")
+    return feature.cpu()
+
+
+def encode_polyline_feature(ft_encoder, geom, expected_dim: int) -> torch.Tensor:
+    comps = _bbox_norm(_polyline_coords(geom))
+    valid = [comp.astype(np.float32, copy=False) for comp in comps if len(comp) >= 2]
+    if not valid:
+        ft_sum = torch.zeros_like(ft_encoder.U, dtype=torch.complex64).reshape(-1)
+        feature = torch.cat([torch.abs(ft_sum), torch.angle(ft_sum)], dim=0).to(torch.float32)
+        return feature.cpu()
+
+    max_len = max(len(comp) for comp in valid)
+    comp_tensor = torch.zeros((len(valid), max_len, 2), dtype=torch.float32)
+    lengths = torch.empty(len(valid), dtype=torch.long)
+    for idx, comp in enumerate(valid):
+        comp_tensor[idx, : len(comp)] = torch.from_numpy(comp)
+        lengths[idx] = len(comp)
+
+    ft = ft_encoder.encode(comp_tensor, lengths, dataset_type="polylines")
+    ft_sum = ft.sum(dim=0) if ft.dim() > 2 else ft
+    feature = torch.cat([torch.abs(ft_sum.reshape(-1)), torch.angle(ft_sum.reshape(-1))], dim=0).to(torch.float32)
+    if feature.numel() != expected_dim:
+        raise RuntimeError(f"Polyline feature dim mismatch: got {feature.numel()}, expected {expected_dim}")
+    return feature.cpu()
+
+
+def build_feature_cache(cli, encoder_args: SimpleNamespace, cache_path: Path):
+    geoms, labels, classes, kind, label_column = load_dataset(cli)
+    feature_dim = 2 * encoder_args.d_input
+    features = torch.empty((len(geoms), feature_dim), dtype=torch.float32)
+    encoder = Poly2Vec(args=encoder_args, device="cpu")
+    encoder.eval()
+
+    print(f"[cache] precomputing Fourier features -> {cache_path}", flush=True)
+    t0 = time.perf_counter()
+    with torch.no_grad():
+        for idx, geom in enumerate(tqdm(geoms, desc="fourier-cache", unit="geom")):
+            if kind == "polygons":
+                features[idx] = encode_polygon_feature(encoder.ft_encoder, geom, feature_dim)
+            elif kind == "polylines":
+                features[idx] = encode_polyline_feature(encoder.ft_encoder, geom, feature_dim)
+            else:
+                raise ValueError(kind)
+    cache_seconds = time.perf_counter() - t0
+    bundle = {
+        "dataset": cli.dataset,
+        "kind": kind,
+        "n_freqs": cli.n_freqs,
+        "limit": int(cli.limit or 0),
+        "label_column": label_column,
+        "feature_dim": feature_dim,
+        "num_entities": int(features.shape[0]),
+        "num_classes": int(len(classes)),
+        "classes": classes,
+        "features": features.contiguous(),
+        "labels": labels.contiguous(),
+    }
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(bundle, cache_path)
+    print(f"[cache] saved {cache_path} ({cache_seconds:.1f}s)", flush=True)
+    return bundle, False, cache_seconds, cache_path
+
+
+def cache_matches(bundle, cli, expected_feature_dim: int) -> bool:
+    requested_limit = int(cli.limit or 0)
+    cache_limit = int(bundle.get("limit", 0) or 0)
+    if bundle.get("dataset") != cli.dataset:
+        return False
+    if bundle.get("n_freqs") != cli.n_freqs:
+        return False
+    if bundle.get("feature_dim") != expected_feature_dim:
+        return False
+    if requested_limit == 0 and cache_limit != 0:
+        return False
+    if requested_limit > 0 and bundle.get("num_entities", 0) < requested_limit:
+        return False
+    if requested_limit > 0 and cache_limit > 0 and cache_limit < requested_limit:
+        return False
+    return True
+
+
+def subset_feature_bundle(bundle, limit: int):
+    if not limit or bundle["features"].shape[0] <= limit:
+        return bundle
+    subset = dict(bundle)
+    subset["features"] = bundle["features"][:limit].contiguous()
+    subset["labels"] = bundle["labels"][:limit].contiguous()
+    subset["num_entities"] = int(limit)
+    return subset
+
+
+def load_or_create_feature_cache(cli, encoder_args: SimpleNamespace):
+    cache_path = Path(cli.feature_cache_path) if cli.feature_cache_path else default_feature_cache_path(cli)
+    if cache_path.exists():
+        print(f"[cache] loading {cache_path}", flush=True)
+        bundle = torch.load(cache_path, map_location="cpu")
+        if cache_matches(bundle, cli, 2 * encoder_args.d_input):
+            return subset_feature_bundle(bundle, int(cli.limit or 0)), True, 0.0, cache_path
+        print(f"[cache] ignoring incompatible cache at {cache_path}; rebuilding", flush=True)
+    return build_feature_cache(cli, encoder_args, cache_path)
+
+
+def make_loaders(features: torch.Tensor, labels: torch.Tensor, batch_size: int, seed: int, pin_memory: bool):
+    base_ds = TensorDataset(features, labels)
+    train_idx, val_idx, test_idx = split_indices(len(base_ds), seed)
+    train_ds = Subset(base_ds, train_idx.tolist())
+    val_ds = Subset(base_ds, val_idx.tolist())
+    test_ds = Subset(base_ds, test_idx.tolist())
+    return (
+        DataLoader(train_ds, batch_size=batch_size, shuffle=True, pin_memory=pin_memory),
+        DataLoader(val_ds, batch_size=batch_size, shuffle=False, pin_memory=pin_memory),
+        DataLoader(test_ds, batch_size=batch_size, shuffle=False, pin_memory=pin_memory),
+    )
+
+
+class CachedShapeClassifier(nn.Module):
+    def __init__(self, args: SimpleNamespace, num_classes: int, device: str):
+        super().__init__()
+        self.encoder = Poly2Vec(args=args, device="cpu")
+        self.encoder.nn.to(device)
+        self.encoder.param_mag.to(device)
+        self.encoder.param_phase.to(device)
+        self.head = nn.Sequential(
+            nn.Linear(args.d_out, args.d_out),
+            nn.ReLU(),
+            nn.Dropout(args.dropout),
+            nn.Linear(args.d_out, num_classes),
+        ).to(device)
+        self.device = device
+        self.d_input = args.d_input
+
+    def forward(self, features: torch.Tensor):
+        mag = self.encoder.param_mag(features[:, : self.d_input])
+        phase = self.encoder.param_phase(features[:, self.d_input :])
+        emb = self.encoder.nn(torch.cat([mag, phase], dim=1))
+        return self.head(emb)
+
+
+def run_epoch(model, loader, optimizer, criterion):
     train = optimizer is not None
     model.train(train)
     total_loss = 0.0
     total = 0
     correct = 0
-    for batch in loader:
-        labels = batch[-1].to(model.head_device)
+    for features, labels in loader:
+        features = features.to(model.device, non_blocking=True)
+        labels = labels.to(model.device, non_blocking=True)
         with torch.set_grad_enabled(train):
-            logits = model(batch, kind)
+            logits = model(features)
             loss = criterion(logits, labels)
             if train:
                 optimizer.zero_grad()
@@ -336,28 +326,11 @@ def run_epoch(model, loader, optimizer, criterion, kind):
     return total_loss / max(total, 1), correct / max(total, 1)
 
 
-def build_args(cli):
-    """Build the SimpleNamespace expected by Poly2Vec from the CLI args."""
-    # n_freqs=10 -> grid is (2*10+1) x 10 = 21*10 = 210, matching d_input=210.
-    # The fusion field defaults to "concat" (the only branch giving 2*d_input).
-    cfg = SimpleNamespace(
-        gfm_params={"w_min": 0.1, "w_max": 1.0, "n_freqs": cli.n_freqs},
-        d_input=(2 * cli.n_freqs + 1) * cli.n_freqs,
-        d_hid=cli.d_hid,
-        d_out=cli.d_out,
-        dropout=cli.dropout,
-        fusion="concat",
-        encoder_device=cli.encoder_device,
-        head_device=cli.head_device,
-    )
-    return cfg
-
-
-def main():
-    parser = argparse.ArgumentParser()
+def parse_cli():
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", choices=list(DATASETS), required=True)
-    parser.add_argument("--label-column", default="label")
-    parser.add_argument("--epochs", type=int, default=2)
+    parser.add_argument("--label-column", default=None)
+    parser.add_argument("--epochs", type=int, default=80)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--n-freqs", type=int, default=10)
@@ -365,39 +338,44 @@ def main():
     parser.add_argument("--d-out", type=int, default=32)
     parser.add_argument("--dropout", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--limit", type=int, default=None,
-                        help="Cap dataset size (smoke testing).")
-    parser.add_argument("--encoder-device", default="cpu",
-                        help="Device for the Fourier encoder. Polygon path runs "
-                             "the `triangle` library on CPU, so cpu is the safe "
-                             "choice.  Lines/polylines could use mps.")
-    parser.add_argument("--head-device", default=None,
-                        help="Device for the classifier head (default: mps if "
-                             "available else cpu).")
+    parser.add_argument("--limit", type=int, default=0, help="Optional dataset cap for smoke tests.")
+    parser.add_argument("--device", default=None, help="Training device: cuda | mps | cpu")
+    parser.add_argument("--head-device", default=None, help="Deprecated alias for --device")
+    parser.add_argument("--encoder-device", default="cpu", help="Cache precompute device; CPU is recommended.")
+    parser.add_argument("--feature-cache-path", default=None)
     parser.add_argument("--output-dir", default=None)
-    cli = parser.parse_args()
+    return parser.parse_args()
 
-    if cli.head_device is None:
-        if torch.backends.mps.is_available():
-            cli.head_device = "mps"
-        elif torch.cuda.is_available():
-            cli.head_device = "cuda"
-        else:
-            cli.head_device = "cpu"
 
-    print(f"[device] encoder={cli.encoder_device} head={cli.head_device}", flush=True)
+def main():
+    cli = parse_cli()
+    train_device = resolve_device(cli.head_device or cli.device)
+    if cli.encoder_device != "cpu":
+        print("[device] forcing Fourier feature precompute onto cpu because triangulation is CPU-bound", flush=True)
+    print(f"[device] train={train_device} cache_precompute=cpu", flush=True)
 
     torch.manual_seed(cli.seed)
     np.random.seed(cli.seed)
 
-    train_loader, val_loader, test_loader, kind, num_classes, max_len = make_loaders(cli.dataset, cli)
-    print(f"[loaders] kind={kind} max_len={max_len} num_classes={num_classes}", flush=True)
+    encoder_args = build_args(cli, train_device)
+    bundle, cache_hit, cache_seconds, cache_path = load_or_create_feature_cache(cli, encoder_args)
+    features = bundle["features"].to(torch.float32)
+    labels = bundle["labels"].to(torch.long)
+    kind = bundle["kind"]
+    num_classes = int(bundle["num_classes"])
 
-    encoder_args = build_args(cli)
-    model = ShapeClassifier(encoder_args, num_classes=num_classes)
-    nparams = sum(p.numel() for p in model.parameters())
-    print(f"[model] params={nparams:,}", flush=True)
+    print(
+        f"[cache] hit={cache_hit} N={features.shape[0]} feature_dim={features.shape[1]} kind={kind}",
+        flush=True,
+    )
 
+    pin_memory = train_device == "cuda"
+    train_loader, val_loader, test_loader = make_loaders(
+        features, labels, batch_size=cli.batch_size, seed=cli.seed, pin_memory=pin_memory
+    )
+
+    model = CachedShapeClassifier(encoder_args, num_classes=num_classes, device=train_device)
+    nparams = sum(param.numel() for param in model.parameters())
     optimizer = torch.optim.Adam(
         list(model.encoder.nn.parameters())
         + list(model.encoder.param_mag.parameters())
@@ -407,44 +385,58 @@ def main():
     )
     criterion = nn.CrossEntropyLoss()
 
-    best_val = -1.0
     history = []
+    best_val = -1.0
     for epoch in range(cli.epochs):
-        t0 = time.time()
-        train_loss, train_acc = run_epoch(model, train_loader, optimizer, criterion, kind)
-        val_loss, val_acc = run_epoch(model, val_loader, None, criterion, kind)
-        dt = time.time() - t0
+        synchronize_device(train_device)
+        t0 = time.perf_counter()
+        train_loss, train_acc = run_epoch(model, train_loader, optimizer, criterion)
+        val_loss, val_acc = run_epoch(model, val_loader, None, criterion)
+        synchronize_device(train_device)
+        epoch_seconds = time.perf_counter() - t0
+        history.append(
+            {
+                "epoch": epoch + 1,
+                "train_loss": train_loss,
+                "train_acc": train_acc,
+                "val_loss": val_loss,
+                "val_acc": val_acc,
+                "epoch_seconds": epoch_seconds,
+            }
+        )
+        best_val = max(best_val, val_acc)
         print(
-            f"epoch {epoch:02d} | train loss={train_loss:.4f} acc={train_acc:.4f} "
-            f"| val loss={val_loss:.4f} acc={val_acc:.4f} | {dt:.1f}s",
+            f"epoch {epoch + 1:02d}/{cli.epochs:02d} | "
+            f"train loss={train_loss:.4f} acc={train_acc:.4f} | "
+            f"val loss={val_loss:.4f} acc={val_acc:.4f} | {epoch_seconds:.2f}s",
             flush=True,
         )
-        history.append({
-            "epoch": epoch, "train_loss": train_loss, "train_acc": train_acc,
-            "val_loss": val_loss, "val_acc": val_acc, "elapsed_s": dt,
-        })
-        best_val = max(best_val, val_acc)
 
-    test_loss, test_acc = run_epoch(model, test_loader, None, criterion, kind)
+    test_loss, test_acc = run_epoch(model, test_loader, None, criterion)
     print(f"[test] loss={test_loss:.4f} acc={test_acc:.4f}", flush=True)
 
     summary = {
         "dataset": cli.dataset,
         "kind": kind,
+        "num_entities": int(features.shape[0]),
         "num_classes": num_classes,
-        "max_len": max_len,
         "epochs_run": cli.epochs,
         "best_val_accuracy": best_val,
         "test_accuracy": test_acc,
         "test_loss": test_loss,
         "params": int(nparams),
+        "train_device": train_device,
+        "feature_cache_path": str(cache_path),
+        "feature_cache_hit": cache_hit,
+        "feature_cache_seconds": cache_seconds,
+        "feature_dim": int(features.shape[1]),
         "encoder_args": vars(encoder_args),
         "history": history,
     }
     out_dir = Path(cli.output_dir or HERE / f"results/{cli.dataset}")
     out_dir.mkdir(parents=True, exist_ok=True)
-    with open(out_dir / "summary.json", "w") as fh:
-        json.dump(summary, fh, indent=2, default=str)
+    with open(out_dir / "summary.json", "w") as handle:
+        json.dump(summary, handle, indent=2, default=str)
     print(f"[save] {out_dir / 'summary.json'}", flush=True)
 
 

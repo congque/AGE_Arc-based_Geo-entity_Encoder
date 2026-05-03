@@ -1,0 +1,72 @@
+{
+  "dataset": "single_buildings",
+  "kind": "polygons",
+  "num_entities": 5010,
+  "num_classes": 10,
+  "epochs_run": 5,
+  "best_val_accuracy": 0.474034620505992,
+  "test_accuracy": 0.4654255319148936,
+  "test_loss": 1.485734614920109,
+  "params": 488978,
+  "train_device": "cuda",
+  "feature_cache_path": "/scratch/sx2490/arcset/baselines/poly2vec/cache/single_buildings/cache_single_buildings_polygons_nfreqs10.pt",
+  "feature_cache_hit": false,
+  "feature_cache_seconds": 20.768746251997072,
+  "feature_dim": 420,
+  "encoder_args": {
+    "gfm_params": {
+      "w_min": 0.1,
+      "w_max": 1.0,
+      "n_freqs": 10
+    },
+    "d_input": 210,
+    "d_hid": 100,
+    "d_out": 32,
+    "dropout": 0.2,
+    "fusion": "concat",
+    "encoder_device": "cpu",
+    "head_device": "cuda"
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 2.3004175996658023,
+      "train_acc": 0.09865982321072142,
+      "val_loss": 2.2831218179151636,
+      "val_acc": 0.11451398135818908,
+      "epoch_seconds": 0.3831748809898272
+    },
+    {
+      "epoch": 2,
+      "train_loss": 2.2607485776209986,
+      "train_acc": 0.10778443113772455,
+      "val_loss": 2.2118763552207286,
+      "val_acc": 0.170439414114514,
+      "epoch_seconds": 0.12418827097280882
+    },
+    {
+      "epoch": 3,
+      "train_loss": 2.0903332138931714,
+      "train_acc": 0.2617621899059025,
+      "val_loss": 1.898666033255911,
+      "val_acc": 0.35419440745672437,
+      "epoch_seconds": 0.12444315600441769
+    },
+    {
+      "epoch": 4,
+      "train_loss": 1.8248671339147615,
+      "train_acc": 0.33704020530367834,
+      "val_loss": 1.623367184170394,
+      "val_acc": 0.42609853528628494,
+      "epoch_seconds": 0.12466388798202388
+    },
+    {
+      "epoch": 5,
+      "train_loss": 1.6455114821541978,
+      "train_acc": 0.401482748788138,
+      "val_loss": 1.4729967279218326,
+      "val_acc": 0.474034620505992,
+      "epoch_seconds": 0.12515811002231203
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "dataset": "single_omniglot",
+  "model": "sketchformer",
+  "n_way": 5,
+  "k_shot": 1,
+  "n_query": 15,
+  "best_epoch": 1,
+  "val_accuracy": 0.36686666890978814,
+  "test_accuracy": 0.38377333464473484,
+  "test_ci95": 0.006513856450389787,
+  "test_loss": 1.4320466307401658,
+  "params": 826624,
+  "config": {
+    "max_seq_len": 200,
+    "num_layers": 4,
+    "d_model": 128,
+    "num_heads": 8,
+    "dff": 512,
+    "lowerdim": 256,
+    "dropout": 0.1,
+    "distance": "cosine",
+    "lr": 0.0003,
+    "epochs": 2,
+    "train_episodes": 200,
+    "val_episodes": 200,
+    "test_episodes": 1000,
+    "init_temp": 10.0,
+    "final_temp": 9.98381519317627
+  },
+  "history": [
+    {
+      "epoch": 0,
+      "train_loss": 1.4757252788543702,
+      "train_acc": 0.3493333353102207,
+      "val_loss": 1.5158871060609818,
+      "val_acc": 0.365733335390687,
+      "val_ci95": 0.01563038807427682,
+      "elapsed_s": 45.43033218383789
+    },
+    {
+      "epoch": 1,
+      "train_loss": 1.4549812722206115,
+      "train_acc": 0.34540000181645153,
+      "val_loss": 1.4654710191488265,
+      "val_acc": 0.36686666890978814,
+      "val_ci95": 0.014771665743534647,
+      "elapsed_s": 40.69659638404846
+    }
+  ]
+}

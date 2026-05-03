@@ -1,0 +1,45 @@
+{
+  "dataset": "single_omniglot",
+  "model": "sketchembednet",
+  "n_way": 5,
+  "k_shot": 1,
+  "n_query": 15,
+  "best_epoch": 1,
+  "val_accuracy": 0.9196666696667671,
+  "test_accuracy": 0.902546668946743,
+  "test_ci95": 0.004635814692639271,
+  "test_loss": 0.3073107343930751,
+  "params": 116096,
+  "config": {
+    "image_size": 28,
+    "embedding_dim": 64,
+    "distance": "cosine",
+    "lr": 0.001,
+    "epochs": 2,
+    "train_episodes": 200,
+    "val_episodes": 200,
+    "test_episodes": 1000,
+    "init_temp": 10.0,
+    "final_temp": 10.793153762817383
+  },
+  "history": [
+    {
+      "epoch": 0,
+      "train_loss": 0.39316183054819703,
+      "train_acc": 0.8677333363890648,
+      "val_loss": 1.1964567136764526,
+      "val_acc": 0.8830000022053719,
+      "val_ci95": 0.011591006116284757,
+      "elapsed_s": 14.966687679290771
+    },
+    {
+      "epoch": 1,
+      "train_loss": 0.22505702410824596,
+      "train_acc": 0.9237333375215531,
+      "val_loss": 0.26296489558648317,
+      "val_acc": 0.9196666696667671,
+      "val_ci95": 0.010506181029336979,
+      "elapsed_s": 8.04278564453125
+    }
+  ]
+}
