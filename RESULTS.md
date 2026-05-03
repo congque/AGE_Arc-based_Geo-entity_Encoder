@@ -55,18 +55,22 @@ episode (matches SketchEmbedNet's eval protocol).
 |---|---|---|---|---|
 | 5w-1s | 0.9179 | **0.9357 ⬆+1.78** | 0.8942 (-2.4) | 0.9513 |
 | 5w-5s | 0.9686 | **0.9815 ⬆+1.29** | 0.9724 (+0.4) | 0.9857 |
-| 20w-1s | 0.8841 | _running, val ≥0.94_ | 0.8558 (-2.83) | 0.8667 |
-| 20w-5s | **0.9633** | _running_ | 0.9570 (-0.6) | 0.9587 |
+| 20w-1s | 0.8841 | 0.8837 (≈tie) | 0.8558 (-2.83) | 0.8667 |
+| 20w-5s | 0.9633 | **0.9635** (≈tie) | 0.9570 (-0.6) | 0.9587 |
 
 Findings:
-- **Aux-stroke loss helps consistently**: +1.78 on 5w-1s, +1.29 on 5w-5s.
-  20w-1s mid-training already exceeds 0.94 val (vs aux-off 0.8841).
+- **Aux-stroke loss helps 5-way**: +1.78 on 5w-1s, +1.29 on 5w-5s. Helps less
+  on 20-way (≈tie), where the encoder is already saturated by the harder
+  discrimination task.
 - **LR-head consistently hurts 1-shot**: -2.4 (5w-1s) and -2.83 (20w-1s).
   L2-norm + LR overfits noise when k_shot=1; ProtoNet with cosine + learnable
   temperature is the better decoder for raw-vector ArcSet embeddings.
   ⇒ Table 3 actually *defends* ArcSet at the matched-decoder protocol — the
   SEN advantage isn't a free lunch from "use LR per episode".
-- **20w-5s aux-off (0.9633) already beats SEN (0.9587)** without aux loss.
+- **ArcSet beats SEN on both 20-way settings** (20w-1s aux-off 0.884 vs SEN
+  0.867; 20w-5s aux-on 0.964 vs SEN 0.959). With aux-on, the gap on 5-way
+  shrinks to within 1.6 / 0.4 pts despite SEN's 21M-sketch QuickDraw
+  pretraining vs our from-scratch 80-epoch episodic training.
 
 ## Caveats
 
