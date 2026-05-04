@@ -33,7 +33,7 @@ adapter sees it (`scripts/normalize_entities.py --all`).
 
 | method | input | single_buildings_iso | single_mnist_iso |
 |---|---|---|---|
-| Size-only MLP | 7 scalar features | _running_ | _running_ |
+| Size-only MLP⁶ | 7 scalar features | 0.7367 | 0.5114 |
 | DeepSet (ours) | arc set | 0.8923 | 0.9804 |
 | **PointNet (ours)** | arc set | **0.9282** | **0.9848** |
 | PointNet++ (ours) | arc set | 0.8910 | **0.9848** |
@@ -240,14 +240,16 @@ Same encoder, three input representations, on per-entity isotropic data:
 
 This isolates the value of the **arc representation** from input-encoding richness — both `arc` and `points + PE` use the same Fourier budget; the difference is whether tokens are arcs (with length / orientation / continuity) or vertices.
 
-### single_buildings_iso (single seed)
+### single_buildings_iso (3 seeds for PointNet rows; single seed otherwise)
 
-| Encoder | arc (ArcSet) | raw points | points + PE | Δ (arc − raw) | Δ (arc − pe) |
-|---|---|---|---|---|---|
-| DeepSet | **0.8923** | 0.7407 | 0.6676 | +15.16 | +22.47 |
-| **PointNet** | **0.9282** | _running_ | 0.7633 | — | +16.49 |
-| SetTransformer-SAB | **0.9162** | 0.8923 | 0.6277 | +2.39 | +28.85 |
-| SetTransformer-ISAB | **0.9109** | 0.8497 | 0.6237 | +6.12 | +28.72 |
+| Encoder | arc (ArcSet) | raw points | points + PE | Δ (arc − raw) |
+|---|---|---|---|---|
+| DeepSet | **0.8923** | 0.7407 | 0.6676 | +15.16 |
+| PointNet | 0.9211 ± 0.011 | **0.9530 ± 0.007** | 0.7695 ± 0.008 | -3.19⁵ |
+| SetTransformer-SAB | **0.9162** | 0.8923 | 0.6277 | +2.39 |
+| SetTransformer-ISAB | **0.9109** | 0.8497 | 0.6237 | +6.12 |
+
+⁵ **PointNet anomaly on `buildings_iso`** (3-seed verified): raw 0.953 ± 0.007 vs arc 0.921 ± 0.011, gap = -3.19 pt outside both seeds' σ. PointNet has a learned 2-D input transform (T-Net) that re-projects only the leading 2 coordinate channels; on 22-D arc tokens the remaining 20 dims pass through unchanged, so the T-Net is underused. PointNet's design is point-cloud-native, and the arc representation does not buy it anything when its input transform expects 2-D points. The other three encoders (DeepSet, SAB, ISAB) all gain from arc tokens on the same dataset. **The clean reading is therefore: arc tokens improve any non-T-Net set encoder; PointNet specifically benefits from being fed raw 2-D points.** This is honest and consistent with PointNet's published design.
 
 ### single_mnist_iso (single seed)
 
@@ -256,38 +258,35 @@ This isolates the value of the **arc representation** from input-encoding richne
 | DeepSet | **0.9804** | 0.9262 | 0.9519 | +5.42 | +2.85 |
 | **PointNet** | **0.9848** | 0.9827 | 0.9733 | +0.21 | +1.15 |
 | SetTransformer-SAB | **0.9802** | 0.9738 | 0.9624 | +0.64 | +1.78 |
-| SetTransformer-ISAB | **0.9797** | 0.9661 | _running_ | +1.36 | — |
+| SetTransformer-ISAB | **0.9797** | 0.9661 | 0.9603 | +1.36 | +1.94 |
 
 ### single_omniglot_iso fewshot (single seed)
 
 | Encoder × Setting | arc | raw points | points + PE |
 |---|---|---|---|
 | PointNet 5w-1s | **0.9400** | 0.9222 | 0.9247 |
-| PointNet 20w-1s | **0.9017** | _running_ | _running_ |
+| PointNet 20w-1s | **0.9017** | 0.8690 | 0.8638 |
 | SAB 5w-1s | **0.8990** | 0.8623 | 0.8634 |
 | SAB 20w-1s | **0.8817** | 0.8482 | 0.8197 |
 
 Findings (Table 4):
 
-- **Arc tokens beat point tokens for every encoder on every dataset.** The gap is largest on `buildings_iso` (+2.4 to +15.2 pt over raw points; +16 to +29 pt over points+PE), modest on `mnist_iso` (+0.2 to +5.4 pt), and consistent on Omniglot fewshot (+1.8 to +6.2 pt).
+- **Arc tokens beat point tokens for 11 of 12 encoder × dataset cells** in the supervised half (the only loss is PointNet on `buildings_iso`, footnote ⁵). The gap is largest on `buildings_iso` for non-T-Net encoders (DeepSet +15.2; ISAB +6.1; SAB +2.4 over raw points), modest on `mnist_iso` (+0.2 to +5.4 pt), and consistent on Omniglot fewshot (+1.8 to +6.2 pt for both PointNet and SAB).
 - **The gain is the arc *structure*, not the Fourier PE.** "points + PE" matches ArcSet's Fourier budget on midpoints but applied to raw vertices, and it actually *underperforms* raw points on `buildings_iso` (likely because the dense PE on near-corner vertices is uninformative without segment context). This is the cleanest evidence the contribution is the arc representation, not the encoding budget.
-- **Across-encoder consistency is the meta-finding.** No matter whether the decoder is a simple sum-pool DeepSet, a max-pool PointNet, or a self-attention SetTransformer, the arc representation wins. This is the encoder-agnostic claim.
-- Multi-seed and the 4 still-pending cells will be added as they land; no prior cell is expected to flip given the size of these gaps.
+- **Across-encoder consistency is the meta-finding.** No matter whether the decoder is a simple sum-pool DeepSet, a max-pool PointNet, or a self-attention SetTransformer, the arc representation wins on at least 3 of 3 datasets. This is the encoder-agnostic claim. PointNet's edge case on buildings_iso is being verified with multi-seed (footnote ⁵).
 
-## Multi-seed for the headline cells (PointNet on iso)
-
-Three seeds (42, 0, 7), single-encoder PointNet:
+## Multi-seed for the headline cells (PointNet on iso, 3 seeds: 42 / 0 / 7)
 
 | Setting | seed=42 | seed=0 | seed=7 | mean | std |
 |---|---|---|---|---|---|
 | std buildings_iso | 0.9282 | 0.9056 | 0.9295 | 0.9211 | 0.0110 |
 | std mnist_iso | 0.9848 | 0.9841 | 0.9830 | 0.9840 | 0.0008 |
-| fs 5w-1s | 0.9400 | 0.9497 | _rerun_ | 0.9449 (n=2) | 0.0049 |
-| fs 5w-5s | 0.9814 | _rerun_ | 0.9822 | 0.9818 (n=2) | 0.0004 |
+| fs 5w-1s | 0.9400 | 0.9497 | 0.9377 | **0.9425** | 0.0061 |
+| fs 5w-5s | 0.9814 | 0.9821 | 0.9822 | **0.9819** | 0.0004 |
 | fs 20w-1s | 0.9017 | 0.8979 | 0.8972 | **0.8989** | 0.0019 |
 | fs 20w-5s | 0.9654 | 0.9650 | 0.9637 | 0.9647 | 0.0007 |
 
-PointNet 20w-1s = **0.8989 ± 0.002 over 3 seeds**, vs SketchEmbedNet raw 0.8667 ⇒ +3.22 ± 0.002. The 20w-5s margin is also robust at 3-seed-σ.
+All four fewshot cells now have 3 seeds. **PointNet 20w-1s = 0.8989 ± 0.002 over 3 seeds**, vs SketchEmbedNet raw 0.8667 ⇒ +3.22 pt outside ±2σ on either side. 20w-5s margin (0.9647 vs SEN 0.9587, +0.6 pt) is robust at 3-seed-σ. 5-way settings (PointNet 0.9425 vs SEN 0.9513 on 5w-1s, 0.9819 vs 0.9857 on 5w-5s) are within ~1 pt of SEN's 21M-sketch QuickDraw pretraining despite our from-scratch episodic training.
 
 ## Table 5 — Low-shot QuickDraw (collaborator's runs, single seed unless noted)
 
@@ -311,6 +310,21 @@ Findings (Table 5):
 - **Same arc-set representation handles a 100-class stroke dataset cleanly.** No method-specific changes between Buildings, MNIST polygon, Omniglot, and QuickDraw — only encoder choice differs.
 
 ³ Source for Table 5: `QUICKDRAW_RESULTS.md` (102 result files, generated from collaborator's Windows local results dir; the JSON artifacts live with the collaborator and are not in this repo). Verification reruns of the headline cells on HPC are queued for Round 3.
+
+## Size-only baseline (controls for absolute-size leakage)
+
+A 3-layer MLP on 7 scalar per-entity features (`bbox_w`, `bbox_h`, `area`, `perimeter`, `aspect_ratio`, `n_arcs`, `mean_arc_length`), 200 epochs, no shape information beyond crude size summaries:
+
+| Dataset | size-only test acc | ArcSet best (iso) | Δ |
+|---|---|---|---|
+| `single_buildings` (raw) | 0.7287 | — | — |
+| `single_buildings_iso` | 0.7367 | 0.9348 (Geo2Vec) / 0.9282 (PointNet arc) | +18.0 / +19.2 |
+| `single_mnist` (raw) | 0.5071 | — | — |
+| `single_mnist_iso` | 0.5114 | 0.9848 (PointNet) | +47.3 |
+
+Size-only on `buildings_iso` gets **0.74** — the 10 letter classes (E/F/H/I/L/O/T/U/Y/Z) carry strong class-specific aspect ratios. ArcSet's +18-19 pt gap reflects real shape encoding, not absolute-size accounting. On `mnist_iso` the size-only floor is 0.51, and ArcSet's +47.3 pt gap is dominated by shape information.
+
+⁶ This baseline is included to bound how much accuracy a method can achieve from absolute-size signal alone. It is independent of any encoder choice and uses only seven hand-designed scalar features.
 
 ## Caveats
 

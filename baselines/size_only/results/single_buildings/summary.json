@@ -1,0 +1,29 @@
+{
+  "dataset": "single_buildings",
+  "method": "size_only_mlp",
+  "feature_dim": 7,
+  "feature_names": [
+    "bbox_w",
+    "bbox_h",
+    "area",
+    "perimeter",
+    "aspect_ratio",
+    "n_arcs",
+    "mean_arc_length"
+  ],
+  "num_classes": 10,
+  "n_total": 5010,
+  "best_epoch": 190,
+  "val_accuracy": 0.7509986684420772,
+  "test_accuracy": 0.7287234042553191,
+  "test_loss": 0.6877022271460675,
+  "config": {
+    "dataset": "single_buildings",
+    "epochs": 200,
+    "batch_size": 128,
+    "seed": 42,
+    "hidden": 64,
+    "device": null,
+    "output_dir": null
+  }
+}
