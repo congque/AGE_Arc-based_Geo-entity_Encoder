@@ -131,10 +131,18 @@ Quickdraw 因登录节点 OOM 暂未生成（890k 实体），其他三个全做
 | PointNet++ (ours) | arc set | 0.8910 | **0.9848** |
 | SetTransformer-SAB (ours) | arc set | 0.9162 | 0.9802 |
 | SetTransformer-ISAB (ours) | arc set | 0.9109 | 0.9797 |
-| **Geo2Vec** | SDF + adaptive PE | **0.9348** | _running_ |
-| Poly2Vec | 2D Fourier | 0.8298 | _running_ |
+| **Geo2Vec** | SDF + adaptive PE | **0.9348** | 0.5971³ |
+| Poly2Vec | 2D Fourier | 0.8298 | _running_⁴ |
 | PolyMP | graph MP | 0.8936 | 0.9753 |
 | PolyMP-DSC | graph MP + DSC | 0.8976 | 0.9730 |
+
+³ **Geo2Vec mnist_iso 大跌**（0.8854 → 0.5971，train 0.97 / val 0.60，明显过拟合）：
+原因可能是 Geo2Vec 的 `MP_sample` 用**整个 dataset 的全局 bbox** 做 SDF query 采样。
+per-entity normalize 之后所有 entity 都中心在原点 + 撑满 [-1,1]，全局 bbox 也是
+[-1,1]，所有 entity 的 query 采样位置高度重合 → 跨 entity 的判别信号被破坏。
+要修就得改成 per-entity bbox 采样，本轮没改。  
+⁴ Poly2Vec mnist_iso 在跑 CPU Fourier 特征预算（每个 polygon 需要 Delaunay
+三角化，~5h 全跑完 60k 个）；先占位，跑完后补 follow-up commit。
 
 **关键观察**：
 

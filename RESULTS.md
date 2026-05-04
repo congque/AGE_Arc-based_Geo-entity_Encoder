@@ -42,12 +42,22 @@ gpkg (`data/<name>/<orig>_iso.gpkg`).
 | PointNet++ (ours) | arc set | 0.8910 | **0.9848** |
 | SetTransformer-SAB (ours) | arc set | 0.9162 | 0.9802 |
 | SetTransformer-ISAB (ours) | arc set | 0.9109 | 0.9797 |
-| **Geo2Vec** | SDF + adaptive PE | **0.9348** | _running_³ |
-| Poly2Vec | 2D Fourier | 0.8298 | _running_³ |
+| **Geo2Vec** | SDF + adaptive PE | **0.9348** | 0.5971³ |
+| Poly2Vec | 2D Fourier | 0.8298 | _running_⁴ |
 | PolyMP | graph MP | 0.8936 | 0.9753 |
 | PolyMP-DSC | graph MP + DSC | 0.8976 | 0.9730 |
 
-³ Geo2Vec / Poly2Vec mnist_iso jobs in flight (cached pipeline).
+³ Geo2Vec mnist_iso drops dramatically (0.8854 raw → 0.5971 iso, train_acc=0.97
+val=0.60 = severe overfit). Likely cause: Geo2Vec's `MP_sample` computes a
+**single global bounding box** across all entities for SDF query sampling,
+so per-entity normalised data (every entity centred at origin, all spanning
+[-1, 1]) makes the model sample SDF queries that overlap heavily across
+entities — destroying the per-entity discriminative signal Geo2Vec relies on.
+Per-entity sampling boxes would likely fix this; not patched here.
+
+⁴ Poly2Vec mnist_iso requires a fresh per-entity Fourier feature precompute
+(triangulation is CPU-bound; ~5 h sequentially for 60 k mnist polygons);
+job in progress.
 
 Findings (Table 1 → Table 1b deltas):
 
