@@ -30,6 +30,7 @@ try:
     from .entitypointnet import EntityPointNet, EntityPointNet2
     from .entitysettransformer_sab import EntitySetTransformerSAB
     from .entitysettransformer_isab import EntitySetTransformerISAB
+    from .load_points import load_gpkg_points
     from .load_entities import auto_num_freqs, count_arcs, geoms2sets
 except ImportError:
     from aux_stroke import ArcFeatureLayout, StrokeAuxiliaryHead, stroke_lambda
@@ -37,6 +38,7 @@ except ImportError:
     from entitypointnet import EntityPointNet, EntityPointNet2
     from entitysettransformer_sab import EntitySetTransformerSAB
     from entitysettransformer_isab import EntitySetTransformerISAB
+    from load_points import load_gpkg_points
     from load_entities import auto_num_freqs, count_arcs, geoms2sets
 
 
@@ -80,6 +82,9 @@ def get_args():
     p.add_argument("--pointnet-pool", choices=["max", "mean", "max_mean"], default="max")
     p.add_argument("--pointnet-k", type=int, default=16)
     p.add_argument("--dropout", type=float, default=0.0)
+    p.add_argument("--input-mode", choices=["arc", "points", "points_pe"], default="arc",
+                   help="arc = ArcSet (segments). points = raw centred (x,y) per vertex. "
+                        "points_pe = vertices + multi-frequency Fourier PE.")
     p.add_argument("--sab-pooling", choices=["mean", "pma"], default="mean",
                    help="set aggregation for SAB encoder; mean avoids PMA collapse on long arc sets")
     p.add_argument("--proto-distance", choices=["cosine", "sqeuclidean"], default="cosine",
@@ -120,14 +125,27 @@ def pick_device(name):
     return torch.device("cpu")
 
 
-def load_episodic(path, label_column, xy_num_freqs, **fkwargs):
+def load_episodic(path, label_column, xy_num_freqs, input_mode="arc", **fkwargs):
     gdf = gpd.read_file(path)
     geoms = gdf.geometry.tolist()
     if xy_num_freqs == "auto":
         avg = float(np.mean([count_arcs(g) for g in geoms]))
         xy_num_freqs = auto_num_freqs(avg)
-        print(f"[load_episodic] avg arcs/entity = {avg:.2f} -> xy_num_freqs = {xy_num_freqs}")
-    edge_sets = geoms2sets(geoms, xy_num_freqs=xy_num_freqs, **fkwargs)
+        print(f"[load_episodic] avg arcs/entity = {avg:.2f} -> num_freqs = {xy_num_freqs}")
+
+    if input_mode == "arc":
+        edge_sets = geoms2sets(geoms, xy_num_freqs=xy_num_freqs, **fkwargs)
+    else:
+        # ignore arc-specific kwargs; use load_points helpers
+        try:
+            from .load_points import geom2points
+        except ImportError:
+            from load_points import geom2points
+        mode = "raw" if input_mode == "points" else "pe"
+        edge_sets = [geom2points(g, mode=mode, num_freqs=int(xy_num_freqs) if mode == "pe" else 0)
+                     for g in geoms]
+        print(f"[load_episodic] input_mode={input_mode} feature_dim={edge_sets[0].shape[1]}")
+
     labels = gdf[label_column].astype(str).to_numpy()
     split = gdf["split"].astype(str).to_numpy() if "split" in gdf.columns else None
     return edge_sets, labels, split, int(xy_num_freqs)
@@ -398,15 +416,24 @@ def main():
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
 
-    edge_sets, labels, split_col, used_xy_freqs = load_episodic(
-        input_path,
-        label_column,
-        xy_num_freqs=parse_xy_num_freqs(args.xy_num_freqs),
-        length_fourier=args.length_fourier,
-        length_num_freqs=args.length_num_freqs,
-        second_harmonic=args.second_harmonic,
-        use_endpoints=args.use_endpoints,
-    )
+    if args.input_mode == "arc":
+        edge_sets, labels, split_col, used_xy_freqs = load_episodic(
+            input_path,
+            label_column,
+            xy_num_freqs=parse_xy_num_freqs(args.xy_num_freqs),
+            input_mode="arc",
+            length_fourier=args.length_fourier,
+            length_num_freqs=args.length_num_freqs,
+            second_harmonic=args.second_harmonic,
+            use_endpoints=args.use_endpoints,
+        )
+    else:
+        edge_sets, labels, split_col, used_xy_freqs = load_episodic(
+            input_path,
+            label_column,
+            xy_num_freqs=parse_xy_num_freqs(args.xy_num_freqs),
+            input_mode=args.input_mode,
+        )
 
     train_classes, val_classes, test_classes = class_splits(labels, split_col, args.seed)
     print(f"[classes] train={len(train_classes)} val={len(val_classes)} test={len(test_classes)}")

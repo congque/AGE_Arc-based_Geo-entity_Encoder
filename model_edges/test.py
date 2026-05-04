@@ -15,12 +15,14 @@ try:
     from .entitysettransformer_sab import EntitySetTransformerSAB
     from .entitysettransformer_isab import EntitySetTransformerISAB
     from .load_entities import load_gpkg
+    from .load_points import load_gpkg_points
 except ImportError:
     from entitydeepset import EntityDeepSet
     from entitypointnet import EntityPointNet, EntityPointNet2
     from entitysettransformer_sab import EntitySetTransformerSAB
     from entitysettransformer_isab import EntitySetTransformerISAB
     from load_entities import load_gpkg
+    from load_points import load_gpkg_points
 
 
 DATASETS = {
@@ -70,6 +72,9 @@ def get_args():
     parser.add_argument("--use-endpoints", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--low-shot", type=int, default=None,
                         help="If set, subsample N training examples per class (low-shot regime)")
+    parser.add_argument("--input-mode", choices=["arc", "points", "points_pe"], default="arc",
+                        help="arc = ArcSet (segments). points = raw centred (x,y) per vertex. "
+                             "points_pe = vertices + multi-frequency Fourier PE.")
     parser.add_argument("--device", default=None, help="cpu | cuda | mps (default: auto)")
     parser.add_argument("--output-dir", default=None)
     return parser.parse_args()
@@ -238,15 +243,25 @@ def main():
 
     device = pick_device(args.device)
 
-    edge_sets, raw_labels, used_xy_freqs = load_gpkg(
-        input_path,
-        label_column,
-        xy_num_freqs=parse_xy_num_freqs(args.xy_num_freqs),
-        length_fourier=args.length_fourier,
-        length_num_freqs=args.length_num_freqs,
-        second_harmonic=args.second_harmonic,
-        use_endpoints=args.use_endpoints,
-    )
+    if args.input_mode == "arc":
+        edge_sets, raw_labels, used_xy_freqs = load_gpkg(
+            input_path,
+            label_column,
+            xy_num_freqs=parse_xy_num_freqs(args.xy_num_freqs),
+            length_fourier=args.length_fourier,
+            length_num_freqs=args.length_num_freqs,
+            second_harmonic=args.second_harmonic,
+            use_endpoints=args.use_endpoints,
+        )
+    else:
+        mode = "raw" if args.input_mode == "points" else "pe"
+        edge_sets, raw_labels, used_xy_freqs = load_gpkg_points(
+            input_path,
+            label_column,
+            mode=mode,
+            num_freqs=parse_xy_num_freqs(args.xy_num_freqs) if mode == "pe" else 0,
+        )
+        print(f"[load_points] mode={mode} feature_dim={edge_sets[0].shape[1]}")
     classes, labels = np.unique(raw_labels, return_inverse=True)
     train_data, val_data, test_data = split_data(edge_sets, labels, args.seed, low_shot=args.low_shot)
     print(f"[split] train={len(train_data)} val={len(val_data)} test={len(test_data)} "

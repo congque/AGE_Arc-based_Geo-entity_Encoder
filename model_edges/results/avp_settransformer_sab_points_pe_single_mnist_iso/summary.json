@@ -1,0 +1,30 @@
+{
+  "dataset": "single_mnist_iso",
+  "set_model": "settransformer-sab",
+  "best_epoch": 43,
+  "val_accuracy": 0.9615555555555556,
+  "test": {
+    "loss": 0.14587221595976088,
+    "accuracy": 0.9624444444444444,
+    "macro_f1": 0.961975322485093
+  },
+  "num_classes": 10,
+  "num_samples": 60000,
+  "max_epochs": 80,
+  "input_dim": 58,
+  "device": "cuda",
+  "low_shot": null,
+  "config": {
+    "pool": "sum",
+    "xy_num_freqs": 9,
+    "xy_num_freqs_mode": "auto",
+    "length_fourier": true,
+    "length_num_freqs": null,
+    "second_harmonic": true,
+    "use_endpoints": false,
+    "num_heads": 4,
+    "num_encoder_blocks": 2,
+    "num_decoder_blocks": 1,
+    "num_inducing_points": 16
+  }
+}
