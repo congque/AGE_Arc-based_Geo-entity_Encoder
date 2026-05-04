@@ -13,7 +13,7 @@ Generated on NYU Torch HPC (`/scratch/sx2490/arcset/`); env at
 | SetTransformer-ISAB (ours) | — | arc set | 0.9601 | 0.9837 |
 | NUFT | Mai et al. GeoInformatica 2023 | rasterised polygon | 0.8523 | 0.9663 |
 | PolygonGNN | Yu et al. KDD 2024 | visibility graph | 0.973 | 0.907 |
-| Poly2Vec | Siampou et al. ICML 2025 | 2D Fourier | 0.8005 | _pending_ |
+| Poly2Vec | Siampou et al. ICML 2025 | 2D Fourier | 0.8005 | 0.9588 |
 | Geo2Vec | Chu et al. AAAI 2026 | SDF + adaptive PE | 0.9721 | 0.8854² |
 | PolyMP | Huang et al. GeoInformatica 2025 | graph MP | 0.8843 | 0.9730 |
 | PolyMP-DSC | Huang et al. GeoInformatica 2025 | graph MP + DSC | 0.8790 | 0.9754 |
@@ -23,7 +23,8 @@ on CPU, then SDF MLP + classifier on h200 GPU): sdf_epochs=12, cls_epochs=80,
 batch=16384. Reduced sdf_epochs vs upstream default to fit in 2h preempt
 window; converged head val loss ~0.05.
 
-`single_mnist` Poly2Vec is still queued on the cached/GPU pipeline.
+Poly2Vec mnist (0.9588) used the cached Fourier features + cuda head
+pipeline, 80 epochs on h200; 489 k params, val 0.9604.
 
 ## Table 2 — Few-shot Omniglot (1623-class stroke, Lake background/evaluation split)
 
@@ -134,10 +135,9 @@ Findings:
 
 ## Open work
 
-- **Poly2Vec single_mnist** still pending — same cached/GPU pipeline as
-  Geo2Vec mnist (which landed at 0.8854). Geo2Vec / Poly2Vec on QuickDraw
-  are blocked on memory: QuickDraw has ~3.6B SDF samples after sampling,
-  exceeds 96 G node limit; needs a streaming or sub-sampled cache.
+- **Geo2Vec / Poly2Vec on QuickDraw** are blocked on memory: QuickDraw has
+  ~3.6 B SDF samples after sampling, exceeds 96 G node limit; needs a
+  streaming or sub-sampled cache.
 - ArcSet QuickDraw few-shot (DeepSet / SAB / ISAB on the 100-class subset,
   5-way only — 20-way infeasible by split size).
 - PolyMP "robustness matrix" (rotation/shear-invariance ablations) — defer

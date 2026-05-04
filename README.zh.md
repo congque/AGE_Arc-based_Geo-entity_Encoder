@@ -100,7 +100,7 @@ CLI：`--aux-stroke on --aux-mask-rate 0.3 --aux-lambda-max 0.5 --aux-warmup-epo
 | SetTransformer-ISAB (ours) | — | arc set | 0.9601 | 0.9837 |
 | NUFT | Mai et al. 2023 | rasterised polygon | 0.8523 | 0.9663 |
 | PolygonGNN | Yu et al. KDD 2024 | visibility graph | 0.973 | 0.907 |
-| Poly2Vec | Siampou et al. ICML 2025 | 2D Fourier | 0.8005 | _pending_ |
+| Poly2Vec | Siampou et al. ICML 2025 | 2D Fourier | 0.8005 | 0.9588 |
 | Geo2Vec | Chu et al. AAAI 2026 | SDF + adaptive PE | 0.9721 | 0.8854 |
 | PolyMP | Huang et al. 2025 | graph MP | 0.8843 | 0.9730 |
 | PolyMP-DSC | Huang et al. 2025 | graph MP + DSC | 0.8790 | 0.9754 |
