@@ -1,0 +1,17 @@
+{
+  "dataset": "single_mnist_iso",
+  "set_model": "deepset",
+  "input_mode": "points",
+  "n_entities_total": 60000,
+  "load_gpkg_seconds": 2.381809977989178,
+  "featurize_seconds": 6.174467580975033,
+  "featurize_per_entity_us": 102.90779301625055,
+  "avg_tokens_per_entity": 235.75915,
+  "input_feature_dim": 2,
+  "params": 59338,
+  "forward_seconds": 0.06213513802504167,
+  "forward_n_entities": 1024,
+  "forward_per_entity_us": 60.678845727579755,
+  "peak_gpu_mb": 33.93896484375,
+  "device": "cuda"
+}

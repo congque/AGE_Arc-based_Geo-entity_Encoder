@@ -1,0 +1,17 @@
+{
+  "dataset": "single_mnist_iso",
+  "set_model": "pointnet2",
+  "input_mode": "arc",
+  "n_entities_total": 60000,
+  "load_gpkg_seconds": 3.4510232160100713,
+  "featurize_seconds": 21.110367843997665,
+  "featurize_per_entity_us": 351.8394640666277,
+  "avg_tokens_per_entity": 235.75915,
+  "input_feature_dim": 89,
+  "params": 368330,
+  "forward_seconds": 0.07068743498530239,
+  "forward_n_entities": 1024,
+  "forward_per_entity_us": 69.03069822783436,
+  "peak_gpu_mb": 251.09033203125,
+  "device": "cuda"
+}

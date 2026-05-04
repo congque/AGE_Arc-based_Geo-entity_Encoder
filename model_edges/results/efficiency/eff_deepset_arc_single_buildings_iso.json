@@ -1,0 +1,17 @@
+{
+  "dataset": "single_buildings_iso",
+  "set_model": "deepset",
+  "input_mode": "arc",
+  "n_entities_total": 5010,
+  "load_gpkg_seconds": 0.6345950639806688,
+  "featurize_seconds": 0.5976685879868455,
+  "featurize_per_entity_us": 119.29512734268374,
+  "avg_tokens_per_entity": 10.56746506986028,
+  "input_feature_dim": 73,
+  "params": 63882,
+  "forward_seconds": 0.050526091014035046,
+  "forward_n_entities": 1024,
+  "forward_per_entity_us": 49.3418857558936,
+  "peak_gpu_mb": 34.09912109375,
+  "device": "cuda"
+}

@@ -1,0 +1,17 @@
+{
+  "dataset": "single_buildings_iso",
+  "set_model": "pointnet",
+  "input_mode": "points_pe",
+  "n_entities_total": 5010,
+  "load_gpkg_seconds": 0.3682287230039947,
+  "featurize_seconds": 0.23587561497697607,
+  "featurize_per_entity_us": 47.080961073248716,
+  "avg_tokens_per_entity": 10.56746506986028,
+  "input_feature_dim": 46,
+  "params": 1276366,
+  "forward_seconds": 0.030864773027133197,
+  "forward_n_entities": 1024,
+  "forward_per_entity_us": 30.141379909309762,
+  "peak_gpu_mb": 85.53515625,
+  "device": "cuda"
+}

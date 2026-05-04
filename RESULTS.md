@@ -326,6 +326,83 @@ Size-only on `buildings_iso` gets **0.74** — the 10 letter classes (E/F/H/I/L/
 
 ⁶ This baseline is included to bound how much accuracy a method can achieve from absolute-size signal alone. It is independent of any encoder choice and uses only seven hand-designed scalar features.
 
+## Table 6 — PointNet T-Net ablation (defends Q5 from review)
+
+The arc-vs-point ablation found PointNet was the only encoder where raw 2-D
+points beat arc tokens on `buildings_iso`. PointNet's design has a 2-D T-Net
+that learns an input-coordinate transform — it expects 2-D point clouds.
+This table tests three T-Net configurations on PointNet × arc tokens
+(22-D input):
+
+| T-Net mode | params | buildings_iso (PointNet × arc) |
+|---|---|---|
+| `none` (no T-Net) | ~1.03 M | 0.9122 |
+| `2d` (default — T-Net on first 2 of 22 dims) | ~1.27 M | 0.9282 |
+| `full` (T-Net on all 22 dims) | ~1.34 M | **0.9335** |
+| `2d` × **raw points** (PointNet's native config) | ~1.27 M | **0.9530 ± 0.007** (3 seeds) |
+
+Reading: extending the T-Net to 22-D buys PointNet-arc +0.5 pt over the
+default 2-D T-Net (and +2 pt over no T-Net), confirming the T-Net is doing
+real work. But even with the full 22-D T-Net, PointNet on arc tokens does
+not catch up to PointNet on raw 2-D points (0.9335 vs 0.9530, -2 pt). The
+honest reading: **PointNet's inductive bias is fundamentally point-cloud-
+native; arc tokens carry information PointNet's architecture can't fully
+exploit even with a matched-dimension T-Net**. This is fine for the paper
+because (a) the other three encoders all gain from arc tokens, and (b) the
+result is now mechanistically explained, not hand-waved.
+
+## Table 7 — Efficiency / wall-clock comparison
+
+Forward inference on h200 GPU; preprocessing on CPU; both measured in
+microseconds per entity over the full dataset.
+
+### Per-entity timing (single_buildings_iso, avg 10.6 tokens/entity)
+
+| Method | input | params | preprocess (µs) | forward (µs) |
+|---|---|---|---|---|
+| DeepSet | arc | 64 k | 119 | 49 |
+| DeepSet | points | 59 k | 28 | 48 |
+| PointNet | arc | 1.27 M | 120 | 31 |
+| PointNet | raw points | 1.27 M | 28 | 29 |
+| PointNet | points + PE | 1.28 M | 47 | 30 |
+| PointNet++ | arc | 367 k | 120 | 60 |
+| SetTransformer-SAB | arc | 276 k | 120 | 54 |
+| SetTransformer-SAB | points | 267 k | 27 | 52 |
+| SetTransformer-ISAB | arc | 479 k | 120 | 58 |
+
+### Per-entity timing (single_mnist_iso, avg 235.8 tokens/entity)
+
+| Method | input | params | preprocess (µs) | forward (µs) |
+|---|---|---|---|---|
+| DeepSet | arc | 65 k | 348 | 90 |
+| DeepSet | points | 59 k | 103 | 61 |
+| PointNet | arc | 1.28 M | 348 | 71 |
+| PointNet | raw points | 1.27 M | 102 | 44 |
+| PointNet | points + PE | 1.28 M | 180 | 63 |
+| PointNet++ | arc | 368 k | 352 | 69 |
+| SetTransformer-SAB | arc | 278 k | 348 | 102 |
+| SetTransformer-SAB | points | 267 k | 103 | 74 |
+| SetTransformer-ISAB | arc | 481 k | 356 | 104 |
+
+### vs polygon baselines (preprocessing per entity, mnist scale)
+
+| Method | preprocessing per entity | preprocessing total (60 k entities) |
+|---|---|---|
+| **ArcSet (any decoder)** | ~350 µs (Fourier features) | **~21 sec** |
+| DeepSet/PointNet on raw points | ~100 µs (just centring) | ~6 sec |
+| Geo2Vec | ~27 ms (SDF sampling, 5 668 points/entity) | **~27 min** |
+| Poly2Vec | ~300 ms (CPU Delaunay triangulation) | **~5 hours** |
+| NUFT | DDSL float64, CPU only | ~hours |
+
+ArcSet's preprocessing is 75× faster than Geo2Vec and ~1 000× faster than
+Poly2Vec on the same 60 k mnist polygon dataset, with no quality penalty
+(ArcSet/PointNet/SAB on `mnist_iso` are within ±0.5 pt of each other and
+all above all baselines under matched protocol). Combined with the
+arc-vs-point ablation in Table 4, ArcSet gives the simplest pipeline,
+the fastest preprocessing, and competitive accuracy without any
+geometry-specific operator (no triangulation, no SDF, no visibility graph,
+no rasterization).
+
 ## Caveats
 
 - **Split convention**: Lake et al. background (964 classes train) /

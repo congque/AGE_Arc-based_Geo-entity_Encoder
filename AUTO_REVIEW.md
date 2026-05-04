@@ -67,3 +67,63 @@ Deferred (too expensive for this loop):
 - ArcSet QuickDraw 5-way fewshot (could do but low-priority for the headline)
 
 Status: implementing.
+
+## Round 2 (2026-05-04, gpt-5.5 xhigh)
+
+### Assessment (Summary)
+
+- Score: 6/10 (up from 4/10)
+- Verdict: almost, but not ready
+- Status: moved from "fatally flawed" to "credible but still borderline"
+
+### Reviewer Raw Response
+
+<details>
+<summary>Click to expand full reviewer response</summary>
+
+**Score:** 6/10, up from 4/10. The work has moved meaningfully: the iso-primary protocol, size-only baseline, multi-seed headline cells, and arc-vs-point ablation remove the most embarrassing objections. But it is still not an Accept-level NeurIPS paper.
+
+**Verdict:** Almost, but not ready.
+
+**Weakness 1:** The best raw-point model beats ArcSet on the main real-world polygon task.
+`PointNet raw points = 0.9530±0.007` vs `PointNet arc = 0.9211±0.011` on buildings_iso. Reviewers will not care that arcs win 11/12 per-encoder cells if the strongest raw-point baseline wins the central OSM benchmark.
+**Min fix:** Add a "best-over-representation" table. Then run matched PointNet variants: no T-Net, 22-D T-Net, and arc-token MLP projection before PointNet. If raw PointNet still wins, explicitly narrow the claim to "arc tokens benefit non-point-cloud-native set encoders."
+
+**Weakness 2:** Benchmark breadth is still below the comparator standard.
+Poly2Vec evaluates across points/polylines/polygons and downstream GeoAI tasks; Geo2Vec claims unified geo-entity modeling with shape, distance, robustness, and efficiency; PolygonGNN targets multipolygon structure with multiple real/synthetic datasets. ArcSet still has one real-world polygon benchmark plus digit/stroke datasets.
+**Min fix:** Add one harder open real polygon or multipolygon benchmark. If DBSR-46K is unavailable, create a size-matched OSM/Overture building or landuse benchmark where the size-only MLP drops much closer to chance.
+
+**Weakness 3:** Protocol fairness is improved, but not sealed.
+SEN/Sketchformer are reimplementations, Geo2Vec full schedule diverges, some few-shot comparisons still sound raw-vs-iso adjacent, and several promoted ablations are single-seed.
+**Min fix:** For every primary claim: same normalization, same decoder budget where possible, 3 seeds, mean±std. Move raw-only aux ablations and reimplemented baselines into appendix unless rerun under iso.
+
+**Weakness 4:** No robustness/invariance evidence.
+For geospatial geometry, rotation, reflection, scale, vertex noise, simplification, and resampling are not optional. This is especially exposed because Geo2Vec and PolygonGNN explicitly emphasize invariant/robust representations.
+**Min fix:** Train clean, test perturbed curves for arc tokens, raw points, points+PE, Geo2Vec/Poly2Vec if feasible. Report stress curves, not just one transformed accuracy.
+
+**Weakness 5:** The efficiency story is still anecdotal.
+"No preprocessing" could be a real contribution, but right now it is qualitative.
+**Min fix:** Add a wall-clock/memory table: preprocessing time, train epoch time, inference/object, peak memory, token count. Include Geo2Vec SDF sampling and Poly2Vec triangulation on the same machine.
+
+**Q5:** PointNet not benefiting from arcs hurts any "arc tokens universally improve encoders" claim. It strengthens the paper only if framed honestly: arc tokenization is a common interface that helps most non-point-native set encoders, while PointNet's inductive bias favors raw 2-D vertices. The exception must be foregrounded, not explained away.
+
+**Q6:** The size-only baseline is a good defense against pure scale leakage: +18-19 points over size-only is real shape signal. But the 0.74 floor also says buildings_iso is too easy and partly class-style biased. For NeurIPS, I would supplement it with a harder or size-matched polygon benchmark.
+
+**One-sentence summary:** The paper has moved from "fatally flawed" to "credible but still borderline," with acceptance now depending on a harder real-world benchmark, fully matched protocols, and a sharper claim that does not pretend arcs beat raw points everywhere.
+
+</details>
+
+### Plan for Round 3 (this round implements)
+
+Prioritized by review-impact / cost ratio:
+
+1. **Robustness / invariance suite** (W4) — train-clean / test-perturbed evaluation curves on existing checkpoints. Cheap (no retrain) and high-impact for geospatial reviewers. Perturbations: rotation {15, 45, 90}°, reflection-x, uniform scale {0.5, 2.0}, vertex Gaussian noise σ∈{0.01, 0.05}, vertex simplification (Douglas-Peucker tol).
+2. **Efficiency / wall-clock table** (W5) — measure preprocessing time per dataset (already have logs for Geo2Vec sampling, Poly2Vec triangulation), train epoch time, inference per entity, peak GPU memory, token count vs N. ArcSet's "no preprocessing" advantage gets quantified.
+3. **PointNet T-Net ablation** (W1) — three variants: no T-Net, 22-D T-Net (extends T-Net to project all 22 dims of arc tokens, not just first 2), PointNet-MLP (drop T-Net entirely). Ideally either narrows the claim sharply or rescues PointNet-arc on buildings_iso.
+
+Deferred for round 4 / future:
+- Harder real-world polygon benchmark (W2). If size-matched OSM landuse can be assembled cheaply, do it; otherwise narrow scope to "vector-shape representation" rather than "general geo-entity encoder".
+- Full 3-seed across ALL ablations (W3). Apply to claimed wins where margin < 1 pt.
+- SEN/Sketchformer upstream wiring.
+
+Status: implementing.

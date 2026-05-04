@@ -1,0 +1,17 @@
+{
+  "dataset": "single_mnist_iso",
+  "set_model": "settransformer-sab",
+  "input_mode": "points",
+  "n_entities_total": 60000,
+  "load_gpkg_seconds": 2.583435751963407,
+  "featurize_seconds": 6.157944766047876,
+  "featurize_per_entity_us": 102.6324127674646,
+  "avg_tokens_per_entity": 235.75915,
+  "input_feature_dim": 2,
+  "params": 266890,
+  "forward_seconds": 0.07526389503618702,
+  "forward_n_entities": 1024,
+  "forward_per_entity_us": 73.49989749627639,
+  "peak_gpu_mb": 637.05419921875,
+  "device": "cuda"
+}

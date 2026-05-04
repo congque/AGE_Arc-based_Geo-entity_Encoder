@@ -1,12 +1,21 @@
 {
-  "round": 1,
-  "threadId": "019df3a3-0d7d-7d61-9d35-59c27ce4d279",
+  "round": 2,
+  "threadId": "019df522-652c-74a3-9417-5caecd789481",
+  "model": "gpt-5.5",
+  "reasoning_effort": "xhigh",
   "status": "in_progress",
-  "last_score": 4.0,
-  "last_verdict": "not ready",
-  "pending_experiments": [
-    "multi-seed PointNet x {buildings_iso, mnist_iso, omniglot_iso 5w-1s, 5w-5s, 20w-1s, 20w-5s}",
-    "size-only baseline x {buildings, mnist, buildings_iso, mnist_iso, omniglot_iso 5w-1s}"
+  "last_score": 6.0,
+  "last_verdict": "almost, but not ready",
+  "score_progression": [4.0, 6.0],
+  "round_3_priorities": [
+    "Robustness suite: train-clean/test-perturbed (rotation, reflection, scale, noise, simplification) on existing checkpoints",
+    "Efficiency / wall-clock table (preprocessing time, train epoch time, inference per entity, peak memory, token count)",
+    "PointNet T-Net ablation: no-T-Net / 22-D T-Net / MLP-projection variants"
   ],
-  "timestamp": "2026-05-04T05:00:00"
+  "deferred": [
+    "Harder real-world polygon benchmark (W2)",
+    "Full 3-seed across all ablations (W3)",
+    "SEN/Sketchformer upstream wiring (B)"
+  ],
+  "timestamp": "2026-05-04T19:00:00"
 }

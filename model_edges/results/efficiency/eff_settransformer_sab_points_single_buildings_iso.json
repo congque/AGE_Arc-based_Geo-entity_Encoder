@@ -1,0 +1,17 @@
+{
+  "dataset": "single_buildings_iso",
+  "set_model": "settransformer-sab",
+  "input_mode": "points",
+  "n_entities_total": 5010,
+  "load_gpkg_seconds": 0.7355346190161072,
+  "featurize_seconds": 0.13659226597519591,
+  "featurize_per_entity_us": 27.263925344350483,
+  "avg_tokens_per_entity": 10.56746506986028,
+  "input_feature_dim": 2,
+  "params": 266890,
+  "forward_seconds": 0.05284308403497562,
+  "forward_n_entities": 1024,
+  "forward_per_entity_us": 51.60457425290588,
+  "peak_gpu_mb": 51.17333984375,
+  "device": "cuda"
+}

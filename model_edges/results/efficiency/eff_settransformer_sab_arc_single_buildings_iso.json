@@ -1,0 +1,17 @@
+{
+  "dataset": "single_buildings_iso",
+  "set_model": "settransformer-sab",
+  "input_mode": "arc",
+  "n_entities_total": 5010,
+  "load_gpkg_seconds": 0.41321798699209467,
+  "featurize_seconds": 0.6012292859959416,
+  "featurize_per_entity_us": 120.00584550817197,
+  "avg_tokens_per_entity": 10.56746506986028,
+  "input_feature_dim": 73,
+  "params": 275978,
+  "forward_seconds": 0.05507155699888244,
+  "forward_n_entities": 1024,
+  "forward_per_entity_us": 53.780817381721135,
+  "peak_gpu_mb": 51.55078125,
+  "device": "cuda"
+}

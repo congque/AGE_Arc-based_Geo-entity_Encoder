@@ -131,10 +131,21 @@ class EntityPointNet(nn.Module):
         output_dim=5,
         pool="max",
         dropout=0.0,
+        input_transform="2d",
     ):
         super().__init__()
         self.pool = pool
-        self.input_transform = TransformNet2D(2, hidden_dim=hidden_dim)
+        self.input_transform_mode = input_transform
+        if input_transform == "2d":
+            self.input_transform = TransformNet2D(2, hidden_dim=hidden_dim)
+        elif input_transform == "full":
+            self.input_transform = TransformNet2D(input_dim, hidden_dim=hidden_dim)
+        elif input_transform == "none":
+            self.input_transform = None
+        else:
+            raise ValueError(f"Unknown input_transform={input_transform!r}; "
+                             "use '2d' (PointNet default), 'full' (project all dims), "
+                             "or 'none' (drop the T-Net).")
         self.mlp1 = MaskedSharedMLP([input_dim, 64])
         self.feature_transform = TransformNet2D(64, hidden_dim=hidden_dim)
         global_dim = max(hidden_dim * 4, embedding_dim)
@@ -156,10 +167,15 @@ class EntityPointNet(nn.Module):
         x, lengths = _to_padded(edge_sets)
         valid = _lengths_to_mask(lengths, x.shape[1])
 
-        coords = x[..., :2]
-        coord_transform = self.input_transform(coords, valid)
-        coords = torch.bmm(coords, coord_transform)
-        x = torch.cat([coords, x[..., 2:]], dim=-1)
+        if self.input_transform_mode == "2d" and self.input_transform is not None:
+            coords = x[..., :2]
+            coord_transform = self.input_transform(coords, valid)
+            coords = torch.bmm(coords, coord_transform)
+            x = torch.cat([coords, x[..., 2:]], dim=-1)
+        elif self.input_transform_mode == "full" and self.input_transform is not None:
+            transform = self.input_transform(x, valid)
+            x = torch.bmm(x, transform)
+        # else: input_transform_mode == "none" -> pass through
 
         h = self.mlp1(x, valid)
         feature_transform = self.feature_transform(h, valid)

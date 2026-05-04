@@ -56,6 +56,10 @@ def get_args():
     parser.add_argument("--pool", choices=["sum", "sum_mean"], default="sum")
     parser.add_argument("--pointnet-pool", choices=["max", "mean", "max_mean"], default="max")
     parser.add_argument("--pointnet-k", type=int, default=16)
+    parser.add_argument("--pointnet-input-transform",
+                        choices=["2d", "full", "none"], default="2d",
+                        help="PointNet T-Net mode: '2d' default (transform first 2 dims), "
+                             "'full' (transform all input dims), 'none' (drop T-Net).")
     parser.add_argument("--dropout", type=float, default=0.0)
     parser.add_argument("--num-heads", type=int, default=4)
     parser.add_argument("--num-encoder-blocks", type=int, default=2)
@@ -178,6 +182,7 @@ def build_model(args, input_dim, output_dim):
             output_dim=output_dim,
             pool=args.pointnet_pool,
             dropout=args.dropout,
+            input_transform=args.pointnet_input_transform,
         )
     if args.set_model == "pointnet2":
         return EntityPointNet2(

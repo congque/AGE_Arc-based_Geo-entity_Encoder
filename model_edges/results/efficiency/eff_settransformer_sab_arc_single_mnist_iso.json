@@ -1,0 +1,17 @@
+{
+  "dataset": "single_mnist_iso",
+  "set_model": "settransformer-sab",
+  "input_mode": "arc",
+  "n_entities_total": 60000,
+  "load_gpkg_seconds": 2.492376370006241,
+  "featurize_seconds": 20.90338797000004,
+  "featurize_per_entity_us": 348.38979950000066,
+  "avg_tokens_per_entity": 235.75915,
+  "input_feature_dim": 89,
+  "params": 278026,
+  "forward_seconds": 0.10474733798764646,
+  "forward_n_entities": 1024,
+  "forward_per_entity_us": 102.292322253561,
+  "peak_gpu_mb": 647.32373046875,
+  "device": "cuda"
+}
