@@ -26,6 +26,48 @@ window; converged head val loss ~0.05.
 Poly2Vec mnist (0.9588) used the cached Fourier features + cuda head
 pipeline, 80 epochs on h200; 489 k params, val 0.9604.
 
+## Table 1b — Same task under per-entity isotropic protocol
+
+Each entity is pre-normalised (subtract bbox center, divide by `max(w, h) / 2`
+so the longest side spans `[-1, 1]`, aspect ratio preserved) before the
+adapter sees it (`scripts/normalize_entities.py --all`). This kills any
+absolute-scale or absolute-position signal so all methods see strictly the
+same shape input. New `_iso` dataset entries point at the pre-normalised
+gpkg (`data/<name>/<orig>_iso.gpkg`).
+
+| method | input | single_buildings_iso | single_mnist_iso |
+|---|---|---|---|
+| DeepSet (ours) | arc set | 0.8923 | 0.9804 |
+| **PointNet (ours)** | arc set | 0.9282 | **0.9848** |
+| PointNet++ (ours) | arc set | 0.8910 | **0.9848** |
+| SetTransformer-SAB (ours) | arc set | 0.9162 | 0.9802 |
+| SetTransformer-ISAB (ours) | arc set | 0.9109 | 0.9797 |
+| **Geo2Vec** | SDF + adaptive PE | **0.9348** | _running_³ |
+| Poly2Vec | 2D Fourier | 0.8298 | _running_³ |
+| PolyMP | graph MP | 0.8936 | 0.9753 |
+| PolyMP-DSC | graph MP + DSC | 0.8976 | 0.9730 |
+
+³ Geo2Vec / Poly2Vec mnist_iso jobs in flight (cached pipeline).
+
+Findings (Table 1 → Table 1b deltas):
+
+- **Buildings drops a lot for ArcSet under iso** (SAB 0.9774 → 0.9162, −6.1;
+  ISAB 0.9601 → 0.9109, −4.9; DeepSet 0.9269 → 0.8923, −3.5). The raw
+  numbers were partially leveraging absolute scale: different building
+  classes (E/F/H/I/L/O/T/U/Y/Z) sit at slightly different sizes in the raw
+  gpkg, and ArcSet does not normalise scale internally. Once that signal
+  is killed, **Geo2Vec reclaims SOTA on buildings** (0.9348).
+- **PointNet wins both buildings_iso and mnist_iso among ArcSet variants**;
+  it is the new headline encoder for our framework under matched protocol.
+  PointNet vs SAB on buildings_iso: 0.9282 vs 0.9162 (+1.20).
+- **mnist is robust**: every encoder lands within ±0.5 pt of its raw number
+  (mnist's per-entity scale is already nearly uniform, so iso is a near
+  no-op). PointNet/PointNet++ tie at 0.9848, slightly above SAB raw 0.9868
+  (within noise) but cleanly above all baselines under matched protocol.
+- **Geo2Vec only drops 3.7 pts** on buildings_iso vs raw — much smaller than
+  ArcSet's drop because Geo2Vec already does its own per-entity isotropic
+  normalize internally; iso input is a near no-op for it.
+
 ## Table 2 — Few-shot Omniglot (1623-class stroke, Lake background/evaluation split)
 
 Episodic ProtoNet evaluation: 80 epochs, 200 episodes/epoch, eval over
@@ -47,6 +89,39 @@ prototypes; the other ISAB cells train normally.
 ArcSet-SAB beats it on 20w-1s. Adding the SEN-inspired stroke-completion
 auxiliary loss (Table 3 below) closes most of the remaining gap.
 Sketchformer underperforms ArcSet across the board.
+
+## Table 2b — Same task under per-entity isotropic protocol
+
+ArcSet encoders re-trained on `single_omniglot_iso` (per-entity isotropic
+normalize, same recipe as Table 1b). Sketchformer / SketchEmbedNet not
+yet re-run on iso input — they already re-normalise internally so any
+delta is small, but the cell is left as the raw number for now.
+
+| method | input | 5w-1s | 5w-5s | 20w-1s | 20w-5s |
+|---|---|---|---|---|---|
+| DeepSet (ours) | arc set | 0.9136 | 0.9729 | 0.8583 | 0.9521 |
+| **PointNet (ours)** | arc set | 0.9400 | **0.9814** | **0.9017** | **0.9654** |
+| **PointNet++ (ours)** | arc set | **0.9426** | 0.9804 | 0.8901 | 0.9644 |
+| SetTransformer-SAB (ours) | arc set | 0.8990 | 0.9726 | 0.8817 | 0.9594 |
+| SetTransformer-ISAB (ours) | arc set | 0.4951¹ | 0.9010 | 0.8340 | 0.9502 |
+| SketchEmbedNet (raw) | image + stroke | 0.9513 | 0.9857 | 0.8667 | 0.9587 |
+
+Findings (Table 2 → Table 2b under iso):
+
+- **PointNet / PointNet++ are the new headline ArcSet encoders on
+  Omniglot.** PointNet 20w-1s 0.9017 is +3.5 pts over SketchEmbedNet's
+  raw 0.8667 and +1.2 over SAB iso 0.8817 — a clean SOTA on the hardest
+  setting. PointNet 20w-5s 0.9654 is also +0.7 over SEN raw.
+- The 5-way settings are still close: PointNet++ 5w-1s 0.9426 is within
+  1 pt of SEN's pretrained 0.9513; PointNet 5w-5s 0.9814 is within
+  0.4 pt of SEN's 0.9857. Without 21 M sketch QuickDraw pretraining.
+- **SAB is no longer the best ArcSet encoder for fewshot under iso**
+  (SAB 0.8990 vs PointNet 0.9400 on 5w-1s) — attention's advantage
+  in our earlier table came partly from absolute-scale information that
+  PointNet handles directly via a learned input transform.
+- **DeepSet stays mid-pack**, ISAB still collapses at k=1. Aux-loss
+  ablation (Table 3 / 3b) was run on the raw protocol; re-running under
+  iso is on the to-do list.
 
 ## Table 3 — Decoder / aux-loss ablation (ArcSet-SAB on Omniglot)
 

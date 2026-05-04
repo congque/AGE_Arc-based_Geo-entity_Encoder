@@ -1,0 +1,30 @@
+{
+  "dataset": "single_buildings_iso",
+  "model": "dsc_polymp",
+  "epochs": 80,
+  "requested_device": "cuda",
+  "actual_device": "cuda",
+  "seed": 42,
+  "class_map": {
+    "E": 0,
+    "F": 1,
+    "H": 2,
+    "I": 3,
+    "L": 4,
+    "O": 5,
+    "T": 6,
+    "U": 7,
+    "Y": 8,
+    "Z": 9
+  },
+  "counts": {
+    "train": 3507,
+    "val": 751,
+    "test": 752
+  },
+  "train_pickle": "/scratch/sx2490/arcset/baselines/polymp/_runs/single_buildings_iso/train.pkl",
+  "val_pickle": "/scratch/sx2490/arcset/baselines/polymp/_runs/single_buildings_iso/val.pkl",
+  "test_pickle": "/scratch/sx2490/arcset/baselines/polymp/_runs/single_buildings_iso/test.pkl",
+  "test_accuracy": 0.8976063829787234,
+  "macro_f1": 0.8950624286526858
+}

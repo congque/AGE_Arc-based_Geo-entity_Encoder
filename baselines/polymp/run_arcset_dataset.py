@@ -36,6 +36,14 @@ DATASETS = {
         "path": REPO_ROOT / "data" / "single_mnist" / "mnist_scaled_normalized.gpkg",
         "class_map": {str(i): i for i in range(10)},
     },
+    "single_buildings_iso": {
+        "path": REPO_ROOT / "data" / "single_buildings" / "ShapeClassification_iso.gpkg",
+        "class_map": {"E": 0, "F": 1, "H": 2, "I": 3, "L": 4, "O": 5, "T": 6, "U": 7, "Y": 8, "Z": 9},
+    },
+    "single_mnist_iso": {
+        "path": REPO_ROOT / "data" / "single_mnist" / "mnist_iso.gpkg",
+        "class_map": {str(i): i for i in range(10)},
+    },
 }
 
 

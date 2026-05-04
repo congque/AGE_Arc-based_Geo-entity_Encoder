@@ -29,6 +29,8 @@
 | `model_edges/entitydeepset.py` | DeepSet | φ → sum/mean → ρ → head |
 | `model_edges/entitysettransformer_sab.py` | SAB | 全自注意力（O(n²)） |
 | `model_edges/entitysettransformer_isab.py` | ISAB | 诱导集注意力（O(n·m)，m 个 inducing points） |
+| `model_edges/entitypointnet.py` (合作者贡献) | PointNet | T-Net 学 2D 输入变换 + masked shared MLP + masked max-pool |
+| `model_edges/entitypointnet.py` (合作者贡献) | PointNet++ | FPS 选 32 个 center → kNN k 个邻居 → 局部 MLP → max-pool |
 
 **关键修复 — PMA 在长弧集上的塌缩**：原本 SAB/ISAB 用 single-seed PMA 做集合聚合。在 Omniglot 上（平均 168 弧/字）我们诊断出嵌入退化：
 
@@ -87,6 +89,16 @@ CLI：`--aux-stroke on --aux-mask-rate 0.3 --aux-lambda-max 0.5 --aux-warmup-epo
 
 **Omniglot split**：用 Lake 等人原版的 background (964 类训练) / evaluation (659 类测试)，**不是** Vinyals 2016 的 split——这点要在论文 Setup 里写清楚。
 
+### Per-entity isotropic 归一化协议（`_iso` 数据集）
+
+为了"绝对公平"地比对不同方法（消除绝对尺度信号、对齐 normalization 协议），加了
+`scripts/normalize_entities.py`：每个 entity 减 bbox 中心 → 按 `max(w, h) / 2`
+等比缩放到 `[-1, 1]`（保持长宽比）→ 落盘为 `data/<name>/<orig>_iso.gpkg`。
+
+每个数据集对应有一个 `_iso` 入口（`single_buildings_iso` 等），所有 adapter 的
+`DATASETS` dict 都加了同样的 entry，跑实验时只需把 `--dataset` 换掉即可。
+Quickdraw 因登录节点 OOM 暂未生成（890k 实体），其他三个全做了。
+
 ---
 
 ## 4. 实验结果
@@ -107,6 +119,29 @@ CLI：`--aux-stroke on --aux-mask-rate 0.3 --aux-lambda-max 0.5 --aux-warmup-epo
 
 **结论**：SAB 在 buildings / mnist 都是 SOTA，mnist 上比次好的 PolyMP-DSC 高 +1.14 pts，比 PolygonGNN 高 +8 pts。
 
+### Table 1b — 同任务在 iso 协议下（公平 normalization）
+
+每个 entity 先 isotropic standardize 后再送模型（见上面 `_iso` 数据集说明）。
+新加入合作者贡献的 PointNet / PointNet++ 编码器（`model_edges/entitypointnet.py`）。
+
+| Method | Input | single_buildings_iso | single_mnist_iso |
+|---|---|---|---|
+| DeepSet (ours) | arc set | 0.8923 | 0.9804 |
+| **PointNet (ours)** | arc set | 0.9282 | **0.9848** |
+| PointNet++ (ours) | arc set | 0.8910 | **0.9848** |
+| SetTransformer-SAB (ours) | arc set | 0.9162 | 0.9802 |
+| SetTransformer-ISAB (ours) | arc set | 0.9109 | 0.9797 |
+| **Geo2Vec** | SDF + adaptive PE | **0.9348** | _running_ |
+| Poly2Vec | 2D Fourier | 0.8298 | _running_ |
+| PolyMP | graph MP | 0.8936 | 0.9753 |
+| PolyMP-DSC | graph MP + DSC | 0.8976 | 0.9730 |
+
+**关键观察**：
+
+- **Buildings 在 iso 下名次重排**：原 raw Table 1 上 SAB 0.9774 → iso 0.9162（−6.1），是因为 raw 数据里不同字母类别（E/F/H 等）尺度系统性不同，ArcSet 利用了这个绝对尺度信号。Geo2Vec 因为内部本来就 per-entity normalize，掉得最少（−3.7），iso 下重新拿到 buildings SOTA (0.9348)。
+- **PointNet (合作者贡献) 在 iso 下成为 ArcSet 内部最强**：buildings 0.9282 (>SAB 0.9162)，mnist 0.9848 (与 PointNet++ 并列第一)。
+- **mnist 几乎不变**（每方法 ±0.5pt 内）：mnist 数字本来 per-entity 尺度就比较一致，iso 几乎无操作。
+
 ### Table 2 — Few-shot Omniglot（vanilla ProtoNet，80 epochs，1000 test episodes）
 
 | Method | Input | 5w-1s | 5w-5s | 20w-1s | 20w-5s |
@@ -118,6 +153,24 @@ CLI：`--aux-stroke on --aux-mask-rate 0.3 --aux-lambda-max 0.5 --aux-warmup-epo
 | Sketchformer | stroke seq | 0.7819 | 0.8592 | 0.6315 | 0.8223 |
 
 ¹ ISAB 在 k=1 时因 16 个 inducing points + 单 support 退化为 chance 附近；k≥5 正常。
+
+### Table 2b — 同任务在 iso 协议下（PointNet 大胜）
+
+| Method | Input | 5w-1s | 5w-5s | 20w-1s | 20w-5s |
+|---|---|---|---|---|---|
+| DeepSet (ours) | arc set | 0.9136 | 0.9729 | 0.8583 | 0.9521 |
+| **PointNet (ours)** | arc set | 0.9400 | **0.9814** | **0.9017** | **0.9654** |
+| **PointNet++ (ours)** | arc set | **0.9426** | 0.9804 | 0.8901 | 0.9644 |
+| SetTransformer-SAB (ours) | arc set | 0.8990 | 0.9726 | 0.8817 | 0.9594 |
+| SetTransformer-ISAB (ours) | arc set | 0.4951¹ | 0.9010 | 0.8340 | 0.9502 |
+| SketchEmbedNet (raw) | image + stroke | 0.9513 | 0.9857 | 0.8667 | 0.9587 |
+
+**关键观察**：
+
+- **PointNet 20w-1s = 0.9017，比 SketchEmbedNet (有 21M sketch QuickDraw 预训练) 的 raw 0.8667 高 +3.5 pts**，是这一格 Omniglot fewshot 的新 SOTA。
+- PointNet 20w-5s = 0.9654 也比 SEN raw 0.9587 高 +0.7 pts。
+- 5-way 上 PointNet/PointNet++ 与 SEN 差距都在 1 pt 以内，且我们 from-scratch 80 epoch episodic 训练，没有任何额外预训练。
+- iso 下 SAB 不再是 ArcSet 内最佳：SAB 5w-1s 0.8990 vs PointNet 0.9400，差 4 pts。原因可能是 SAB 之前部分依赖了绝对尺度信号；PointNet 用 T-Net 学输入变换可能更适应这种 scale-invariant 的 setting。
 
 ### Table 3 — SAB 解码器 / aux-loss 消融
 

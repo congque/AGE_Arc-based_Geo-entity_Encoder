@@ -27,12 +27,14 @@ import torch.nn.functional as F
 try:
     from .aux_stroke import ArcFeatureLayout, StrokeAuxiliaryHead, stroke_lambda
     from .entitydeepset import EntityDeepSet
+    from .entitypointnet import EntityPointNet, EntityPointNet2
     from .entitysettransformer_sab import EntitySetTransformerSAB
     from .entitysettransformer_isab import EntitySetTransformerISAB
     from .load_entities import auto_num_freqs, count_arcs, geoms2sets
 except ImportError:
     from aux_stroke import ArcFeatureLayout, StrokeAuxiliaryHead, stroke_lambda
     from entitydeepset import EntityDeepSet
+    from entitypointnet import EntityPointNet, EntityPointNet2
     from entitysettransformer_sab import EntitySetTransformerSAB
     from entitysettransformer_isab import EntitySetTransformerISAB
     from load_entities import auto_num_freqs, count_arcs, geoms2sets
@@ -43,9 +45,14 @@ DATASETS = {
     "single_mnist": ("data/single_mnist/mnist_scaled_normalized.gpkg", "label"),
     "single_omniglot": ("data/single_omniglot/omniglot.gpkg", "label"),
     "single_quickdraw": ("data/single_quickdraw/quickdraw.gpkg", "label"),
+    # Per-entity isotropic-normalized variants (centroid + max(w,h)/2 -> [-1,1]).
+    "single_buildings_iso": ("data/single_buildings/ShapeClassification_iso.gpkg", "label"),
+    "single_mnist_iso": ("data/single_mnist/mnist_iso.gpkg", "label"),
+    "single_omniglot_iso": ("data/single_omniglot/omniglot_iso.gpkg", "label"),
+    "single_quickdraw_iso": ("data/single_quickdraw/quickdraw_iso.gpkg", "label"),
 }
 
-SET_MODELS = ["deepset", "settransformer-sab", "settransformer-isab"]
+SET_MODELS = ["deepset", "pointnet", "pointnet2", "settransformer-sab", "settransformer-isab"]
 
 
 def get_args():
@@ -70,6 +77,9 @@ def get_args():
     p.add_argument("--num-decoder-blocks", type=int, default=1)
     p.add_argument("--num-inducing-points", type=int, default=16)
     p.add_argument("--pool", choices=["sum", "sum_mean"], default="sum")
+    p.add_argument("--pointnet-pool", choices=["max", "mean", "max_mean"], default="max")
+    p.add_argument("--pointnet-k", type=int, default=16)
+    p.add_argument("--dropout", type=float, default=0.0)
     p.add_argument("--sab-pooling", choices=["mean", "pma"], default="mean",
                    help="set aggregation for SAB encoder; mean avoids PMA collapse on long arc sets")
     p.add_argument("--proto-distance", choices=["cosine", "sqeuclidean"], default="cosine",
@@ -263,6 +273,11 @@ def build_encoder(args, input_dim):
                   embedding_dim=args.embedding_dim, output_dim=None)
     if args.set_model == "deepset":
         return EntityDeepSet(pool=args.pool, **common)
+    if args.set_model == "pointnet":
+        return EntityPointNet(pool=args.pointnet_pool, dropout=args.dropout, **common)
+    if args.set_model == "pointnet2":
+        return EntityPointNet2(pool=args.pointnet_pool, k=args.pointnet_k,
+                               dropout=args.dropout, **common)
     if args.set_model == "settransformer-sab":
         return EntitySetTransformerSAB(num_heads=args.num_heads,
                                        num_encoder_blocks=args.num_encoder_blocks,
@@ -405,6 +420,11 @@ def main():
                            learnable=args.proto_learnable_temp).to(device)
     aux_head = None
     if args.aux_stroke == "on":
+        if args.set_model in ("pointnet", "pointnet2"):
+            raise ValueError(
+                f"--aux-stroke on is not supported for {args.set_model}: "
+                "the aux head reads encoder.stem / encoder.encoder / encoder.phi internals."
+            )
         aux_head = StrokeAuxiliaryHead(
             feature_layout=ArcFeatureLayout(
                 input_dim=edge_sets[0].shape[1],

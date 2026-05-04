@@ -46,6 +46,23 @@ DATASETS = {
         "path": PROJECT_ROOT / "data" / "single_quickdraw" / "quickdraw.gpkg",
         "kind": "polylines",
     },
+    # Per-entity isotropic-normalized variants (centroid + max(w,h)/2 -> [-1,1]).
+    "single_buildings_iso": {
+        "path": PROJECT_ROOT / "data" / "single_buildings" / "ShapeClassification_iso.gpkg",
+        "kind": "polygons",
+    },
+    "single_mnist_iso": {
+        "path": PROJECT_ROOT / "data" / "single_mnist" / "mnist_iso.gpkg",
+        "kind": "polygons",
+    },
+    "single_omniglot_iso": {
+        "path": PROJECT_ROOT / "data" / "single_omniglot" / "omniglot_iso.gpkg",
+        "kind": "polylines",
+    },
+    "single_quickdraw_iso": {
+        "path": PROJECT_ROOT / "data" / "single_quickdraw" / "quickdraw_iso.gpkg",
+        "kind": "polylines",
+    },
 }
 
 LABEL_CANDIDATES = ("label", "labels", "class", "category", "class_id", "y", "target")

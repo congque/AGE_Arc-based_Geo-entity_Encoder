@@ -1,0 +1,30 @@
+{
+  "dataset": "single_buildings_iso",
+  "set_model": "deepset",
+  "best_epoch": 36,
+  "val_accuracy": 0.9054593874833555,
+  "test": {
+    "loss": 0.5618309549828793,
+    "accuracy": 0.8922872340425532,
+    "macro_f1": 0.8917556265218455
+  },
+  "num_classes": 10,
+  "num_samples": 5010,
+  "max_epochs": 80,
+  "input_dim": 73,
+  "device": "cuda",
+  "low_shot": null,
+  "config": {
+    "pool": "sum",
+    "xy_num_freqs": 7,
+    "xy_num_freqs_mode": "auto",
+    "length_fourier": true,
+    "length_num_freqs": null,
+    "second_harmonic": true,
+    "use_endpoints": false,
+    "num_heads": 4,
+    "num_encoder_blocks": 2,
+    "num_decoder_blocks": 1,
+    "num_inducing_points": 16
+  }
+}

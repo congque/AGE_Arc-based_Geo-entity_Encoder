@@ -50,6 +50,27 @@ DATASETS = {
         "label_col": "label",
         "expected_geom": "MultiLineString",
     },
+    # Per-entity isotropic-normalized variants (centroid + max(w,h)/2 -> [-1,1]).
+    "single_buildings_iso": {
+        "path": PROJECT_ROOT / "data" / "single_buildings" / "ShapeClassification_iso.gpkg",
+        "label_col": "label",
+        "expected_geom": "Polygon",
+    },
+    "single_mnist_iso": {
+        "path": PROJECT_ROOT / "data" / "single_mnist" / "mnist_iso.gpkg",
+        "label_col": "label",
+        "expected_geom": "Polygon",
+    },
+    "single_omniglot_iso": {
+        "path": PROJECT_ROOT / "data" / "single_omniglot" / "omniglot_iso.gpkg",
+        "label_col": "label",
+        "expected_geom": "MultiLineString",
+    },
+    "single_quickdraw_iso": {
+        "path": PROJECT_ROOT / "data" / "single_quickdraw" / "quickdraw_iso.gpkg",
+        "label_col": "label",
+        "expected_geom": "MultiLineString",
+    },
 }
 
 LABEL_CANDIDATES = ("label", "labels", "class", "category", "class_id", "y", "target")

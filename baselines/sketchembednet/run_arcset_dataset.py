@@ -58,6 +58,14 @@ DATASETS = {
         "path": "data/single_quickdraw/quickdraw.gpkg",
         "label_col": "label",
     },
+    "single_omniglot_iso": {
+        "path": "data/single_omniglot/omniglot_iso.gpkg",
+        "label_col": "label",
+    },
+    "single_quickdraw_iso": {
+        "path": "data/single_quickdraw/quickdraw_iso.gpkg",
+        "label_col": "label",
+    },
 }
 
 # Allow GPU memory growth so multiple jobs can share the device.
