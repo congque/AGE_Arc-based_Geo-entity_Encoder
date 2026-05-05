@@ -1,0 +1,11 @@
+{
+  "dataset": "single_buildings_iso",
+  "set_model": "deepset",
+  "input_mode": "arc",
+  "checkpoint": "model_edges/results/deepset_single_buildings_iso/best.pt",
+  "perturb": "scale",
+  "magnitude": 0.5,
+  "test_accuracy": 0.16489361702127658,
+  "test_loss": 19.088784359871074,
+  "test_macro_f1": 0.08851488288792585
+}

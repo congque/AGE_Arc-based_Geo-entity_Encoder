@@ -1,0 +1,11 @@
+{
+  "dataset": "single_buildings_iso",
+  "set_model": "pointnet",
+  "input_mode": "points",
+  "checkpoint": "model_edges/results/avp_pointnet_points_single_buildings_iso/best.pt",
+  "perturb": "simplify",
+  "magnitude": 0.02,
+  "test_accuracy": 0.9800531914893617,
+  "test_loss": 0.05246190425563366,
+  "test_macro_f1": 0.9795665745349785
+}

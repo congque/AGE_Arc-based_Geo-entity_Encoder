@@ -1,0 +1,30 @@
+{
+  "dataset": "single_buildings_iso",
+  "set_model": "settransformer-sab",
+  "best_epoch": 22,
+  "val_accuracy": 0.8788282290279628,
+  "test": {
+    "loss": 0.5237167331766575,
+    "accuracy": 0.8882978723404256,
+    "macro_f1": 0.8852735736643698
+  },
+  "num_classes": 10,
+  "num_samples": 5010,
+  "max_epochs": 80,
+  "input_dim": 73,
+  "device": "cuda",
+  "low_shot": null,
+  "config": {
+    "pool": "sum",
+    "xy_num_freqs": 7,
+    "xy_num_freqs_mode": "auto",
+    "length_fourier": true,
+    "length_num_freqs": null,
+    "second_harmonic": true,
+    "use_endpoints": false,
+    "num_heads": 4,
+    "num_encoder_blocks": 2,
+    "num_decoder_blocks": 1,
+    "num_inducing_points": 16
+  }
+}

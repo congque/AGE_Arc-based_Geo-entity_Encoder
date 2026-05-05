@@ -79,6 +79,8 @@ def get_args():
     parser.add_argument("--input-mode", choices=["arc", "points", "points_pe"], default="arc",
                         help="arc = ArcSet (segments). points = raw centred (x,y) per vertex. "
                              "points_pe = vertices + multi-frequency Fourier PE.")
+    parser.add_argument("--reflect-aug", action="store_true",
+                        help="Augment training data with reflect_x (doubles train set size)")
     parser.add_argument("--device", default=None, help="cpu | cuda | mps (default: auto)")
     parser.add_argument("--output-dir", default=None)
     return parser.parse_args()
@@ -269,6 +271,38 @@ def main():
         print(f"[load_points] mode={mode} feature_dim={edge_sets[0].shape[1]}")
     classes, labels = np.unique(raw_labels, return_inverse=True)
     train_data, val_data, test_data = split_data(edge_sets, labels, args.seed, low_shot=args.low_shot)
+
+    if args.reflect_aug:
+        # Build a reflected version of every training entity (deterministic
+        # 2x augmentation) by re-running the loader on shapely-reflected
+        # geometries. Test/val left untouched.
+        from shapely.affinity import affine_transform
+        import geopandas as gpd
+        from load_entities import geom2set
+        from load_points import geom2points
+        gdf_aug = gpd.read_file(input_path)
+        geoms_reflected = [affine_transform(g, [1, 0, 0, -1, 0, 0]) for g in gdf_aug.geometry]
+        if args.input_mode == "arc":
+            edge_sets_aug = [geom2set(g, xy_num_freqs=used_xy_freqs,
+                                       length_fourier=args.length_fourier,
+                                       length_num_freqs=args.length_num_freqs,
+                                       second_harmonic=args.second_harmonic,
+                                       use_endpoints=args.use_endpoints)
+                              for g in geoms_reflected]
+        else:
+            mode = "raw" if args.input_mode == "points" else "pe"
+            edge_sets_aug = [geom2points(g, mode=mode,
+                                          num_freqs=used_xy_freqs if mode == "pe" else 0)
+                              for g in geoms_reflected]
+        # Get the train indices used by split_data (regenerate to find them)
+        rng_aug = np.random.default_rng(args.seed)
+        idx_aug = np.arange(len(labels))
+        rng_aug.shuffle(idx_aug)
+        n_train_aug = int(len(idx_aug) * 0.7)
+        train_idx_aug = idx_aug[:n_train_aug]
+        train_data = train_data + [(edge_sets_aug[i], int(labels[i])) for i in train_idx_aug]
+        print(f"[reflect-aug] doubled train set: {len(train_data)} examples")
+
     print(f"[split] train={len(train_data)} val={len(val_data)} test={len(test_data)} "
           f"low_shot={args.low_shot}")
 

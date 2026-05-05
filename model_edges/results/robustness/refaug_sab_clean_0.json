@@ -1,0 +1,11 @@
+{
+  "dataset": "single_buildings_iso",
+  "set_model": "settransformer-sab",
+  "input_mode": "arc",
+  "checkpoint": "model_edges/results/refaug_settransformer_sab_arc_buildings_iso/best.pt",
+  "perturb": "clean",
+  "magnitude": 0.0,
+  "test_accuracy": 0.8882978723404256,
+  "test_loss": 0.5237167331766575,
+  "test_macro_f1": 0.8852735736643698
+}

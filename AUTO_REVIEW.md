@@ -127,3 +127,62 @@ Deferred for round 4 / future:
 - SEN/Sketchformer upstream wiring.
 
 Status: implementing.
+
+## Round 3 (2026-05-04, gpt-5.5 xhigh continued)
+
+### Assessment
+
+- Score: **6.5/10** (slight movement from 6, generous framing 7)
+- Verdict: almost, but still not ready
+
+### Reviewer Raw Response (Round 3)
+
+<details>
+<summary>Click to expand full reviewer response</summary>
+
+**Score:** 6.5/10, maybe 7/10 with generous framing. It moved from 6, but not enough for "ready."
+
+**Verdict:** Almost, but still not ready for NeurIPS.
+
+**Weakness 1:** Benchmark breadth remains the biggest blocker.
+One OSM building benchmark plus MNIST/Omniglot/QuickDraw is still too narrow compared with Geo2Vec, Poly2Vec, PolygonGNN.
+**Min fix:** Add one genuinely harder open real-world polygon benchmark, preferably size/aspect-balanced. If not possible, create a public OSM/Overture benchmark and show size-only accuracy is much lower than 0.74.
+
+**Weakness 2:** Best raw-point PointNet still wins the central real-world task.
+The T-Net ablation is useful, but the headline remains awkward: raw 2-D points beat arc tokens by about 2 points on buildings_iso.
+**Min fix:** Make the claim explicitly conditional: arcs improve non-T-Net set encoders and provide a fast geometry interface, but raw PointNet remains strongest on this benchmark. Add a "best method per representation" table.
+
+**Weakness 3:** Reflection failure is severe.
+This is not a small robustness caveat. Arc methods collapsing to 0.10-0.38 under reflection will alarm reviewers.
+**Min fix:** Actually run the proposed fix. Reflection augmentation is the minimum. Better: compare original arc features vs reflection-symmetric arc features vs augmentation.
+
+**Weakness 4:** Protocol fairness is still not sealed.
+Reimplemented SEN/Sketchformer, raw-only aux ablation, and single-seed ablation cells leave openings for easy reviewer criticism.
+**Min fix:** Move weak baselines/aux claims to appendix or rerun under iso with 3 seeds. Primary tables should be matched protocol only.
+
+**Weakness 5:** Multi-seed coverage is still selective.
+The new robustness and many arc-vs-point results are single-seed. That is acceptable for exploratory appendix evidence, not for central claims.
+**Min fix:** 3 seeds for the core robustness rows: PointNet-raw, PointNet-arc, SAB-arc, SAB-points, DeepSet-arc.
+
+**Q5:** Honest disclosure helps credibility, but it also hurts the technical case unless you run the fix. As written, a reviewer can say: "They found a catastrophic failure and did not evaluate the obvious remedy." One small augmentation table could convert this from a liability into a limitation-with-solution.
+
+**Q6:** The efficiency result is strong enough as a secondary contribution. 75x over Geo2Vec preprocessing and 1000x over Poly2Vec is meaningful, especially with competitive accuracy. It would be stronger with training time and peak memory, but energy consumption is unnecessary.
+
+**Single-sentence summary:** ArcSet now looks like a credible, efficient geometry-token interface with real empirical value, but the paper still needs either a harder real-world benchmark or a fixed reflection story to cross from borderline into accept.
+
+</details>
+
+### Plan for Round 4 (this round implements)
+
+Priority order by review-impact / cost:
+
+1. **Reflection augmentation experiment** (W3, Q5) — train PointNet-arc, SAB-arc, DeepSet-arc on `buildings_iso` with random reflect_x augmentation (p=0.5) at train time. Show clean + reflected test acc. Converts the catastrophic-failure liability into a "limitation-with-solution".
+2. **Best-per-representation summary table** (W2) — doc rewrite. Surface the conditional claim cleanly: "for each input representation, what's the best encoder + accuracy?"
+3. **Training time + peak memory** added to Table 7 efficiency (Q6).
+4. **3-seed for core robustness rows** (W5) — repeat the 5 critical rows × 9 perturbations × 3 seeds = 135 fast evals. Cheap.
+5. Maybe — reflection-symmetric arc features (cos θ, |sin θ|) as a second variant alongside augmentation.
+
+Deferred / final-round risks:
+- W1 harder real-world benchmark — biggest unaddressed risk. User confirmed deferring (DBSR-46K closed; single_buildings is OSM real-world; OSM landuse curation is substantial).
+
+Status: implementing.
