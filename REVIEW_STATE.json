@@ -1,21 +1,31 @@
 {
-  "round": 2,
+  "round": 4,
   "threadId": "019df522-652c-74a3-9417-5caecd789481",
   "model": "gpt-5.5",
   "reasoning_effort": "xhigh",
-  "status": "in_progress",
-  "last_score": 6.0,
-  "last_verdict": "almost, but not ready",
-  "score_progression": [4.0, 6.0],
-  "round_3_priorities": [
-    "Robustness suite: train-clean/test-perturbed (rotation, reflection, scale, noise, simplification) on existing checkpoints",
-    "Efficiency / wall-clock table (preprocessing time, train epoch time, inference per entity, peak memory, token count)",
-    "PointNet T-Net ablation: no-T-Net / 22-D T-Net / MLP-projection variants"
+  "status": "completed",
+  "score_progression": [4.0, 6.0, 6.5, 7.0],
+  "final_score": 7.0,
+  "final_verdict": "almost / borderline accept",
+  "rounds_used": 4,
+  "max_rounds": 4,
+  "remaining_blockers": [
+    "Benchmark breadth (W1): need harder real-world polygon dataset OR narrow claim. Out of scope for auto-loop.",
+    "Paper writing: claim must stay sharply scoped — 'preprocessing-light arc-token interface', not 'universal accuracy winner'."
   ],
-  "deferred": [
-    "Harder real-world polygon benchmark (W2)",
-    "Full 3-seed across all ablations (W3)",
-    "SEN/Sketchformer upstream wiring (B)"
+  "key_winning_findings": [
+    "Arc tokens beat point tokens for 4 of 5 encoders × 3 datasets (Tables 4, 1b, 2b)",
+    "PointNet 20w-1s = 0.8989 ± 0.002 vs SketchEmbedNet raw 0.8667 (+3.22 pt over 3 seeds)",
+    "75-1000x preprocessing speedup vs Geo2Vec/Poly2Vec with no quality penalty (Table 7)",
+    "Reflection failure of arc tokens fully fixed with 1-line augmentation (+57 to +79 pt under reflect_x, Table 8b)",
+    "Size-only floor 0.74 buildings / 0.51 mnist; ArcSet +18-47 pt above is real shape encoding"
   ],
-  "timestamp": "2026-05-04T19:00:00"
+  "key_honest_limitations": [
+    "PointNet on raw 2-D points beats PointNet on arc tokens by ~2 pt on buildings_iso (T-Net is point-cloud-native)",
+    "Arc tokens reflection-sensitive without augmentation (Table 8 catastrophic failure → 8b verified fix)",
+    "Scale invariance comes from preprocessing, not encoder learning",
+    "Buildings size-only floor 0.74 indicates the dataset is somewhat aspect-ratio-driven",
+    "SEN/Sketchformer are TF2 reimpls, not upstream code"
+  ],
+  "timestamp": "2026-05-04T22:00:00"
 }

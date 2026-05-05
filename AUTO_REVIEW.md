@@ -186,3 +186,65 @@ Deferred / final-round risks:
 - W1 harder real-world benchmark — biggest unaddressed risk. User confirmed deferring (DBSR-46K closed; single_buildings is OSM real-world; OSM landuse curation is substantial).
 
 Status: implementing.
+
+## Round 4 (2026-05-04, gpt-5.5 xhigh) — Final round
+
+### Assessment
+
+- Score: **7/10** (up from 6.5)
+- Verdict: **almost / borderline accept** (assuming careful, narrow writing)
+- Trajectory: 4 → 6 → 6.5 → 7 over 4 rounds (auto-review-loop converged)
+
+### Reviewer Raw Response (Round 4)
+
+<details>
+<summary>Click to expand full reviewer response</summary>
+
+**Score:** 7/10, up about +0.5 from Round 3. This is now credible borderline-accept territory, but not a clean accept.
+
+**Verdict:** Almost / borderline accept, assuming the paper is written narrowly and honestly.
+
+**Weakness 1:** Benchmark breadth is still the main blocker.
+One real OSM building dataset plus digit/stroke polygons is thin for a NeurIPS "geo-entity encoder" claim.
+**Min fix:** Either add one harder open OSM/Overture polygon benchmark, or narrow the claim aggressively to "fast arc-token interface for polygon/stroke shape encoding," not broad geospatial representation learning.
+
+**Weakness 2:** Raw PointNet still wins buildings_iso.
+The best-per-representation table makes this acceptable, but only if the paper does not imply arcs dominate all inputs.
+**Min fix:** Put the honest result in the main text: ArcSet is within about 2 points of raw PointNet on buildings, wins/matches elsewhere, and is far cheaper than domain-specific preprocessing.
+
+**Weakness 3:** Protocol fairness still has weak spots.
+SEN/Sketchformer reimpls and raw-only aux ablations are reviewable attack surfaces.
+**Min fix:** Demote these to appendix/caveats unless rerun under iso. Do not use them to support central claims.
+
+**Weakness 4:** Scale robustness remains unfixed.
+All methods collapse under scale perturbation, but since iso normalization is part of the protocol, this is less damaging than reflection was.
+**Min fix:** State scale invariance is provided by preprocessing, not learned. If possible, add scale augmentation as a small appendix result.
+
+**Weakness 5:** Efficiency table is strong but incomplete.
+Preprocessing speed is now a real secondary contribution, but training time and peak memory would make it harder to dismiss.
+**Min fix:** Add train epoch time, inference/entity, peak GPU memory, and preprocessing/entity in one table.
+
+**Q5:** The remaining issues are mostly limitation/future-work caliber now, except benchmark breadth. Reflection is no longer a blocker because you verified the fix. PointNet-raw winning one dataset is no longer fatal because the paper now reports it directly and reframes the contribution as efficiency plus encoder-agnostic geometry tokens, not universal accuracy dominance.
+
+**Q6:** The single most important thing to write is:
+"ArcSet is not a universal accuracy winner; it is a preprocessing-light arc-token interface that gives non-specialized set encoders competitive polygon/stroke representations, comes within 1-2 points of the best raw-point model on OSM buildings, matches or wins on digit/stroke shapes, and reduces geometry preprocessing by 75-1000x."
+
+**Single-sentence summary:** The paper has moved from not-ready to borderline-accept: honest, useful, and empirically much stronger, but still limited by benchmark breadth and the need to keep the claims sharply scoped.
+
+</details>
+
+## Loop terminating — converged at borderline-accept
+
+Score progression: **4/10 (R1) → 6/10 (R2) → 6.5/10 (R3) → 7/10 (R4)**.
+
+The auto-review-loop has consumed its 4 rounds. Remaining work to push from borderline-accept to clean-accept requires either (a) a harder real-world polygon benchmark — substantive new dataset work, not a single experiment — or (b) very careful paper writing to keep the claim tight. Both are out-of-scope for an autonomous review-loop and become human + writing tasks.
+
+## Method Description (input for /paper-illustration)
+
+ArcSet is an encoder for 2-D vector geometries (polygons, multi-line strings, strokes) that decomposes each entity into a permutation-invariant set of **directed arc primitives** — segments between adjacent vertices. Each arc carries explicit geometric information that an isolated point does not: a midpoint position, segment length, absolute orientation θ, and turning angles to neighboring arcs. The midpoint is multi-frequency Fourier-encoded; length is Fourier-encoded; orientation and turning angles use sin/cos with optional 2nd-harmonic features.
+
+The arc set is fed to any permutation-invariant set encoder (DeepSet, PointNet/PointNet++, SetTransformer-SAB/ISAB) which produces a fixed-dimensional entity embedding. Decoder is task-specific (linear head for supervised; ProtoNet cosine + learnable temperature for few-shot; optional masked-arc-completion auxiliary head with GMM-MDN midpoint + Gaussian length + 16-bin theta).
+
+Data flow: gpkg → shapely → per-entity isotropic normalize (centroid subtract + max(w,h)/2 scale to [-1,1]) → arc decomposition → per-arc Fourier features → set encoder → embedding → head. No triangulation, no SDF sampling, no visibility graph, no rasterization. Preprocessing is 75× faster than Geo2Vec and ~1000× faster than Poly2Vec on a 60k mnist polygon dataset.
+
+Verified findings: arc tokens are encoder-agnostic (4 of 5 encoders gain over raw points + Fourier PE); arc representation is reflection-sensitive but a 1-line reflection augmentation closes the gap (+57 to +79 pt under reflect_x); preprocessing speedups are 75-1000× over baselines with no quality penalty.
