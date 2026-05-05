@@ -1,0 +1,11 @@
+{
+  "dataset": "single_buildings_iso",
+  "set_model": "deepset",
+  "input_mode": "points",
+  "checkpoint": "model_edges/results/avp_deepset_points_single_buildings_iso/best.pt",
+  "perturb": "scale",
+  "magnitude": 0.5,
+  "test_accuracy": 0.17420212765957446,
+  "test_loss": 6.2117093370315875,
+  "test_macro_f1": 0.09761779859043249
+}

@@ -1,0 +1,11 @@
+{
+  "dataset": "single_buildings_iso",
+  "set_model": "pointnet",
+  "input_mode": "arc",
+  "checkpoint": "model_edges/results/pointnet_single_buildings_iso/best.pt",
+  "perturb": "noise",
+  "magnitude": 0.05,
+  "test_accuracy": 0.8856382978723404,
+  "test_loss": 0.444604384772321,
+  "test_macro_f1": 0.8826040367341361
+}

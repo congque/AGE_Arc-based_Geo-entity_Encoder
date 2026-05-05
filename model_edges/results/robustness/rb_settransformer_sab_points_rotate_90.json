@@ -1,0 +1,11 @@
+{
+  "dataset": "single_buildings_iso",
+  "set_model": "settransformer-sab",
+  "input_mode": "points",
+  "checkpoint": "model_edges/results/avp_settransformer_sab_points_single_buildings_iso/best.pt",
+  "perturb": "rotate",
+  "magnitude": 90.0,
+  "test_accuracy": 0.8776595744680851,
+  "test_loss": 0.5792065402294727,
+  "test_macro_f1": 0.8727793883313092
+}

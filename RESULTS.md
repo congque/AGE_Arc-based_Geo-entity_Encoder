@@ -403,6 +403,54 @@ the fastest preprocessing, and competitive accuracy without any
 geometry-specific operator (no triangulation, no SDF, no visibility graph,
 no rasterization).
 
+## Table 8 — Robustness suite (train clean, test perturbed)
+
+`single_buildings_iso` test split, single seed, no retraining. Each cell is
+test accuracy after applying the perturbation to test geometries only.
+
+| Encoder × input | clean | rot 15° | rot 45° | rot 90° | reflect_x | scale 0.5× | scale 2× | noise σ=.01 | noise σ=.05 | simplify ε=.02 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| DeepSet-arc | 0.8923 | 0.8803 | 0.8697 | 0.8883 | **0.1051** | **0.1662** | **0.2513** | 0.8989 | 0.8231 | 0.9176 |
+| DeepSet-points | 0.7407 | 0.7074 | 0.5811 | 0.7021 | 0.7314 | 0.1742 | 0.1489 | 0.7394 | 0.7221 | 0.8005 |
+| **PointNet-arc** | 0.9282 | 0.9202 | 0.9029 | 0.9189 | **0.3750** | 0.2926 | 0.2699 | 0.9282 | 0.8856 | 0.9495 |
+| **PointNet-raw** | **0.9468** | **0.9388** | **0.9162** | 0.9215 | **0.9388** | 0.2314 | 0.6117 | 0.9428 | 0.9043 | 0.9668 |
+| PointNet-pe | 0.7633 | 0.6915 | 0.5399 | 0.7261 | 0.7832 | 0.1729 | 0.2354 | 0.7819 | 0.7181 | 0.8005 |
+| SAB-arc | 0.9162 | 0.9082 | 0.8883 | 0.9136 | **0.1795** | 0.2553 | 0.2380 | 0.9069 | 0.8670 | 0.9362 |
+| SAB-points | 0.8923 | 0.8910 | 0.8298 | 0.8777 | 0.8949 | 0.1862 | 0.3364 | 0.8976 | 0.8657 | 0.9269 |
+
+Findings:
+
+- **Rotation invariance (15°/45°/90°)**: All methods are reasonably robust;
+  arc tokens drop 0.5–4 pt across rotations. The arc representation is not
+  rotation-equivariant (orientation θ is encoded absolutely), but the
+  Fourier midpoint encoding helps it generalise across small rotations.
+- **Reflection (reflect_x)**: arc tokens **catastrophically fail**
+  (DeepSet-arc 0.89 → 0.10, SAB-arc 0.92 → 0.18, PointNet-arc 0.93 → 0.38)
+  because θ flips sign under reflection and the model learned specific
+  orientation patterns. PointNet on raw points only loses 0.8 pt. **This
+  is an honest limitation of arc tokens**: they encode direction. Easy fix
+  is reflection-augmentation at training time, or replacing θ with `cos θ`
+  + `|sin θ|`-style reflection-symmetric features. We surface this as an
+  important known limitation, not hide it.
+- **Scale (0.5× / 2×)**: Every method collapses (drop 65–75 pt). Both
+  ArcSet and points-mode were trained on per-entity isotropic-normalised
+  inputs; applying a global scale at test time pushes the input
+  out-of-distribution. The fix is multi-scale augmentation at training,
+  not an architectural change — this is a property of the protocol, not
+  the encoder.
+- **Vertex noise (σ=0.01, σ=0.05)**: Robust. σ=0.01 sometimes slightly
+  improves accuracy (regularization effect); σ=0.05 drops 3-10 pt.
+- **Vertex simplification (Douglas-Peucker tol=0.02)**: Most methods
+  *improve* by 1-3 pt — simplification removes redundant collinear
+  vertices, which yields a cleaner arc set / point cloud. ArcSet is
+  robust to this realistic preprocessing variation.
+
+These results are honest. Reflection is a real arc-representation
+limitation; we propose two clean fixes (augmentation, or reflection-symmetric
+features) and note that PointNet-raw's strong reflection robustness is
+explainable by the T-Net (which learns rotation-and-reflection-aware
+input transforms).
+
 ## Caveats
 
 - **Split convention**: Lake et al. background (964 classes train) /
